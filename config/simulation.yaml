@@ -1,0 +1,21 @@
+simulation:
+  width: 1000
+  height: 700
+  fps: 60
+  max_steps: 3000
+
+population:
+  prey: 50
+  predators: 10
+
+environment:
+  initial_food: 100
+  food_respawn: 5
+  obstacle_count: 15
+
+energy:
+  prey_initial: 100
+  predator_initial: 100
+  movement_cost: 0.1
+  food_reward: 20
+  capture_reward: 30

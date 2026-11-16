@@ -1,0 +1,29 @@
+[project]
+name = "neuroecosistema"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Willy-HC", email = "willton.higuera@usantoto.edu.co" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.5",
+    "pandas>=3.1.1",
+    "pygame>=2.6.1",
+    "pyyaml>=6.0.3",
+]
+
+[project.scripts]
+neuroecosistema = "neuroecosistema:main"
+
+[build-system]
+requires = ["uv_build>=0.12.13,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "ruff>=0.17.5",
+]

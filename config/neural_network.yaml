@@ -1,0 +1,9 @@
+neural_network:
+  input_size: 8
+  hidden_layers:
+    - 16
+    - 12
+  output_size: 2
+
+  activation_hidden: relu
+  activation_output: tanh

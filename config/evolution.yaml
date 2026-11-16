@@ -1,0 +1,11 @@
+evolution:
+  population_size: 50
+  generations: 30
+
+  elitism: 5
+  mutation_rate: 0.10
+  mutation_strength: 0.15
+  crossover_rate: 0.70
+
+  selection: tournament
+  seed: 42
