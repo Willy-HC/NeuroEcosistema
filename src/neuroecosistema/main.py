@@ -1,28 +1,56 @@
+from pathlib import Path
+
 import pygame
+import yaml
+
+from neuroecosistema.simulation.environment import Environment
+from neuroecosistema.visualization.renderer import Renderer
+
+
+def load_configuration() -> dict:
+    """Carga la configuración principal del ecosistema."""
+
+    project_root = Path(__file__).resolve().parents[2]
+    config_path = project_root / "config" / "simulation.yaml"
+
+    with config_path.open("r", encoding="utf-8") as file:
+        return yaml.safe_load(file)
 
 
 def main() -> None:
     pygame.init()
 
-    # Configuración de la ventana
-    width = 1000
-    height = 700
-    fps = 60
+    config = load_configuration()
+
+    simulation_config = config["simulation"]
+    environment_config = config["environment"]
+
+    width = simulation_config["width"]
+    height = simulation_config["height"]
+    fps = simulation_config["fps"]
 
     screen = pygame.display.set_mode((width, height))
     pygame.display.set_caption("NeuroEcosistema: Evolución artificial")
 
     clock = pygame.time.Clock()
+
+    environment = Environment(
+        width=width,
+        height=height,
+        initial_food=environment_config["initial_food"],
+        seed=42,
+    )
+
+    renderer = Renderer(screen)
+
     running = True
 
-    # Bucle principal
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
 
-        # Fondo del ecosistema
-        screen.fill((30, 45, 35))
+        renderer.draw_environment(environment)
 
         pygame.display.flip()
         clock.tick(fps)
