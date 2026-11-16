@@ -34,3 +34,22 @@ class Renderer:
                 position,
                 2,
             )
+
+    def draw_agents(self, environment: Environment) -> None:
+        """Dibuja las presas y los depredadores."""
+
+        for agent in environment.prey:
+            pygame.draw.circle(
+                self.screen,
+                agent.color,
+                (int(agent.x), int(agent.y)),
+                agent.radius,
+            )
+
+        for agent in environment.predators:
+            pygame.draw.circle(
+                self.screen,
+                agent.color,
+                (int(agent.x), int(agent.y)),
+                agent.radius,
+            )

@@ -29,6 +29,8 @@ def main() -> None:
     height = simulation_config["height"]
     fps = simulation_config["fps"]
 
+    movement_cost = config["energy"]["movement_cost"]
+
     screen = pygame.display.set_mode((width, height))
     pygame.display.set_caption("NeuroEcosistema: Evolución artificial")
 
@@ -41,6 +43,12 @@ def main() -> None:
         seed=42,
     )
 
+    population_config = config["population"]
+    environment.generate_agents(
+        prey_quantity=population_config["prey"],
+        predator_quantity=population_config["predators"],
+    )
+
     renderer = Renderer(screen)
 
     running = True
@@ -50,7 +58,9 @@ def main() -> None:
             if event.type == pygame.QUIT:
                 running = False
 
+        environment.update_agents(movement_cost)
         renderer.draw_environment(environment)
+        renderer.draw_agents(environment)
 
         pygame.display.flip()
         clock.tick(fps)
