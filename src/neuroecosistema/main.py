@@ -1,8 +1,12 @@
+import argparse
 from pathlib import Path
 
 import pygame
 import yaml
 
+from neuroecosistema.neural_network.model_loader import (
+    load_trained_network,
+)
 from neuroecosistema.simulation.environment import Environment
 from neuroecosistema.visualization.renderer import Renderer
 
@@ -24,7 +28,59 @@ def load_configuration() -> tuple[dict, dict]:
     return simulation_config, neural_config
 
 
+def assign_trained_models(
+    environment,
+    neural_config,
+    model_dir="results",
+):
+    """Asigna una copia del modelo entrenado a cada agente."""
+
+    model_dir = Path(model_dir)
+
+    models = (
+        ("prey", environment.prey, environment.prey_networks),
+        (
+            "predator",
+            environment.predators,
+            environment.predator_networks,
+        ),
+    )
+
+    for species, agents, networks in models:
+        model_path = model_dir / f"best_{species}.npz"
+
+        trained_network = load_trained_network(
+            model_path,
+            neural_config,
+        )
+
+        genome = trained_network.get_genome()
+
+        for agent in agents:
+            # Las redes ya se inicializaron en main().
+            # Solo sustituimos sus parámetros.
+            network = networks[id(agent)]
+            network.set_genome(genome)
+
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Simulación visual de NeuroEcosistema"
+    )
+
+    parser.add_argument(
+        "--trained",
+        action="store_true",
+        help="Utilizar los mejores modelos entrenados",
+    )
+
+    parser.add_argument(
+        "--model-dir",
+        default="results",
+        help="Directorio de los modelos guardados",
+    )
+
+    args = parser.parse_args()
+
     pygame.init()
 
     # Cargar configuraciones
@@ -64,6 +120,13 @@ def main() -> None:
 
     # Inicializar redes neuronales independientes
     environment.initialize_neural_networks(neural_config)
+
+    if args.trained:
+        assign_trained_models(
+            environment,
+            neural_config,
+            model_dir=args.model_dir,
+        )
 
     renderer = Renderer(screen)
 
