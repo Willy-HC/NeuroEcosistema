@@ -2,8 +2,12 @@ import math
 import random
 from dataclasses import dataclass
 
+from neuroecosistema.agents.neural_controller import (
+    calculate_neural_direction,
+)
 from neuroecosistema.agents.predator import Predator
 from neuroecosistema.agents.prey import Prey
+from neuroecosistema.neural_network.network import NeuralNetwork
 
 
 @dataclass
@@ -75,21 +79,65 @@ class Environment:
 
             self.predators.append(Predator(x=x, y=y))
 
-    def update_agents(self, movement_cost: float = 0.1) -> None:
-        """Actualiza el movimiento de todos los organismos."""
 
-        for agent in self.prey + self.predators:
+    def update_agents(self, movement_cost=0.1):
+        """Actualiza los agentes usando decisiones neuronales."""
+
+        decisions = []
+
+        for prey in self.prey:
+            network = self.prey_networks.get(id(prey))
+
+            direction = (
+                calculate_neural_direction(prey, network, self)
+                if network is not None
+                else None
+            )
+
+            decisions.append((prey, direction))
+
+        for predator in self.predators:
+            network = self.predator_networks.get(id(predator))
+
+            direction = (
+                calculate_neural_direction(predator, network, self)
+                if network is not None
+                else None
+            )
+
+            decisions.append((predator, direction))
+
+        # Primero calculamos todas las decisiones.
+        # Después actualizamos las posiciones.
+        for agent, direction in decisions:
             agent.update(
-                width=self.width,
-                height=self.height,
-                rng=self.random,
-                movement_cost=movement_cost,
+                self.width,
+                self.height,
+                self.random,
+                movement_cost,
+                neural_direction=direction,
             )
 
         self.prey = [agent for agent in self.prey if agent.alive]
         self.predators = [
             agent for agent in self.predators if agent.alive
         ]
+
+        # Descartar redes de agentes que ya no existen.
+        active_prey_ids = {id(agent) for agent in self.prey}
+        active_predator_ids = {id(agent) for agent in self.predators}
+
+        self.prey_networks = {
+            agent_id: network
+            for agent_id, network in self.prey_networks.items()
+            if agent_id in active_prey_ids
+        }
+
+        self.predator_networks = {
+            agent_id: network
+            for agent_id, network in self.predator_networks.items()
+            if agent_id in active_predator_ids
+        }
 
     def resolve_interactions(self, capture_reward: float = 30.0) -> None:
         """Resuelve la alimentación y las capturas del ciclo."""
@@ -134,3 +182,33 @@ class Environment:
                     break
 
         self.prey = remaining_prey
+
+    def initialize_neural_networks(self, network_config):
+        """Asigna una red neuronal independiente a cada agente."""
+
+        self.prey_networks = {}
+        self.predator_networks = {}
+
+        for prey in self.prey:
+            network = NeuralNetwork(
+                input_size=network_config["input_size"],
+                hidden_layers=network_config["hidden_layers"],
+                output_size=network_config["output_size"],
+                hidden_activation=network_config["activation_hidden"],
+                output_activation=network_config["activation_output"],
+                seed=self.random.randint(0, 2**32 - 1),
+            )
+
+            self.prey_networks[id(prey)] = network
+
+        for predator in self.predators:
+            network = NeuralNetwork(
+                input_size=network_config["input_size"],
+                hidden_layers=network_config["hidden_layers"],
+                output_size=network_config["output_size"],
+                hidden_activation=network_config["activation_hidden"],
+                output_activation=network_config["activation_output"],
+                seed=self.random.randint(0, 2**32 - 1),
+            )
+
+            self.predator_networks[id(predator)] = network

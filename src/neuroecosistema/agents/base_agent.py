@@ -1,6 +1,5 @@
 
 import math
-import random
 from dataclasses import dataclass
 
 
@@ -22,42 +21,46 @@ class BaseAgent:
 
     def update(
         self,
-        width: int,
-        height: int,
-        rng: random.Random,
-        movement_cost: float = 0.1,
-    ) -> None:
+        width,
+        height,
+        rng,
+        movement_cost=0.1,
+        neural_direction=None,
+    ):
         """Actualiza el movimiento y la energía del agente."""
 
         if not self.alive:
             return
 
-        # Cambiar de dirección periódicamente.
-        if self.direction_timer <= 0:
-            self.direction = rng.uniform(0, 2 * math.pi)
-            self.direction_timer = self.direction_change_interval
+        if neural_direction is not None:
+            dx, dy = neural_direction
+            magnitude = math.hypot(dx, dy)
 
-        self.direction_timer -= 1
+            if magnitude > 1e-8:
+                self.direction = math.atan2(dy, dx)
 
-        # Calcular desplazamiento.
-        self.x += math.cos(self.direction) * self.speed
-        self.y += math.sin(self.direction) * self.speed
+                movement_x = self.speed * dx / magnitude
+                movement_y = self.speed * dy / magnitude
+            else:
+                movement_x = 0.0
+                movement_y = 0.0
 
-        # Mantener al agente dentro del mundo.
-        min_x = self.radius
-        max_x = width - self.radius
-        min_y = self.radius
-        max_y = height - self.radius
+        else:
+            self.direction_timer += 1
 
-        if self.x < min_x or self.x > max_x:
-            self.direction = math.pi - self.direction
-            self.x = max(min_x, min(self.x, max_x))
+            if self.direction_timer >= self.direction_change_interval:
+                self.direction = rng.uniform(0, 2 * math.pi)
+                self.direction_timer = 0
 
-        if self.y < min_y or self.y > max_y:
-            self.direction = -self.direction
-            self.y = max(min_y, min(self.y, max_y))
+            movement_x = math.cos(self.direction) * self.speed
+            movement_y = math.sin(self.direction) * self.speed
 
-        # Consumo de energía por movimiento.
+        self.x += movement_x
+        self.y += movement_y
+
+        self.x = max(self.radius, min(width - self.radius, self.x))
+        self.y = max(self.radius, min(height - self.radius, self.y))
+
         self.energy -= movement_cost
 
         if self.energy <= 0:
