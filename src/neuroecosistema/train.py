@@ -4,6 +4,9 @@ from pathlib import Path
 
 import yaml
 
+from neuroecosistema.evolution.coevolution_trainer import (
+    CoevolutionTrainer,
+)
 from neuroecosistema.evolution.trainer import EvolutionTrainer
 
 
@@ -35,7 +38,7 @@ def main():
 
     parser.add_argument(
         "--species",
-        choices=["prey", "predator"],
+        choices=["prey", "predator", "both"],
         default="prey",
     )
 
@@ -75,22 +78,56 @@ def main():
     if args.max_steps is not None:
         simulation["simulation"]["max_steps"] = args.max_steps
 
-    trainer = EvolutionTrainer(
-        simulation_config=simulation,
-        neural_config=neural,
-        evolution_config=evolution,
-        species=args.species,
-    )
+    
+    if args.species == "both":
+        trainer = CoevolutionTrainer(
+            simulation_config=simulation,
+            neural_config=neural,
+            evolution_config=evolution,
+        )
 
-    trainer.train()
-    paths = trainer.save_results(args.output)
+        trainer.train()
+        paths = trainer.save_results(args.output)
 
-    print("\nEntrenamiento finalizado.")
-    print(f"Mejor fitness: {trainer.best_fitness:.4f}")
-    print(f"Mejor generación: {trainer.best_generation}")
+        print("\nCoevolución finalizada.")
 
-    for name, path in paths.items():
-        print(f"{name}: {path}")
+        for species, species_paths in paths.items():
+            species_trainer = (
+                trainer.prey_trainer
+                if species == "prey"
+                else trainer.predator_trainer
+            )
+
+            print(f"\nEspecie: {species}")
+            print(
+                f"Mejor fitness: "
+                f"{species_trainer.best_fitness:.4f}"
+            )
+            print(
+                f"Mejor generación: "
+                f"{species_trainer.best_generation}"
+            )
+
+            for name, path in species_paths.items():
+                print(f"{name}: {path}")
+
+    else:
+        trainer = EvolutionTrainer(
+            simulation_config=simulation,
+            neural_config=neural,
+            evolution_config=evolution,
+            species=args.species,
+        )
+
+        trainer.train()
+        paths = trainer.save_results(args.output)
+
+        print("\nEntrenamiento finalizado.")
+        print(f"Mejor fitness: {trainer.best_fitness:.4f}")
+        print(f"Mejor generación: {trainer.best_generation}")
+
+        for name, path in paths.items():
+            print(f"{name}: {path}")
 
 
 if __name__ == "__main__":
