@@ -17,6 +17,12 @@ class BaseAgent:
     direction: float = 0.0
     direction_timer: int = 0
     direction_change_interval: int = 45
+
+    steps_survived: int = 0
+    food_eaten: int = 0
+    captures: int = 0
+    stagnation_steps: int = 0
+
     alive: bool = True
 
     def update(
@@ -55,12 +61,31 @@ class BaseAgent:
             movement_x = math.cos(self.direction) * self.speed
             movement_y = math.sin(self.direction) * self.speed
 
+
+        previous_x = self.x
+        previous_y = self.y
+
         self.x += movement_x
         self.y += movement_y
 
-        self.x = max(self.radius, min(width - self.radius, self.x))
-        self.y = max(self.radius, min(height - self.radius, self.y))
+        self.x = max(
+            self.radius,
+            min(width - self.radius, self.x),
+        )
+        self.y = max(
+            self.radius,
+            min(height - self.radius, self.y),
+        )
 
+        displacement = math.dist(
+            (previous_x, previous_y),
+            (self.x, self.y),
+        )
+
+        if displacement < 0.1:
+            self.stagnation_steps += 1
+
+        self.steps_survived += 1
         self.energy -= movement_cost
 
         if self.energy <= 0:

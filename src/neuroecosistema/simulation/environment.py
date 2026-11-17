@@ -156,6 +156,7 @@ class Environment:
                     prey.energy = min(100.0, prey.energy + plant.energy)
                     self.plants.remove(plant)
                     self.total_food_consumed += 1
+                    prey.food_eaten += 1
                     break
 
         # Cacería de los depredadores.
@@ -179,6 +180,7 @@ class Environment:
 
                     remaining_prey.remove(prey)
                     self.total_captures += 1
+                    predator.captures += 1
                     break
 
         self.prey = remaining_prey
