@@ -82,4 +82,65 @@ class NeuralNetwork:
                 values = self.hidden_activation(values)
 
         return values
+
     
+    def get_genome(self):
+        """Convierte todos los pesos y sesgos en un vector."""
+
+        parameters = []
+
+        for weights, biases in zip(self.weights, self.biases):
+            parameters.extend(weights.flatten())
+            parameters.extend(biases.flatten())
+
+        return np.asarray(parameters, dtype=np.float64)
+
+    def set_genome(self, genome):
+        """Reconstruye los pesos y sesgos desde un genoma."""
+
+        genome = np.asarray(genome, dtype=np.float64)
+
+        expected_size = sum(
+            weights.size + biases.size
+            for weights, biases in zip(self.weights, self.biases)
+        )
+
+        if genome.ndim != 1 or genome.size != expected_size:
+            raise ValueError(
+                f"Se esperaban {expected_size} parámetros, "
+                f"pero se recibió un genoma de forma {genome.shape}."
+            )
+
+        if not np.all(np.isfinite(genome)):
+            raise ValueError(
+                "El genoma contiene valores no finitos."
+            )
+
+        position = 0
+
+        for index in range(len(self.weights)):
+            weights = self.weights[index]
+            biases = self.biases[index]
+
+            weights_size = weights.size
+            biases_size = biases.size
+
+            self.weights[index] = genome[
+                position:position + weights_size
+            ].reshape(weights.shape).copy()
+
+            position += weights_size
+
+            self.biases[index] = genome[
+                position:position + biases_size
+            ].reshape(biases.shape).copy()
+
+            position += biases_size
+
+    def count_parameters(self):
+        """Devuelve la cantidad total de parámetros de la red."""
+
+        return sum(
+            weights.size + biases.size
+            for weights, biases in zip(self.weights, self.biases)
+        )
