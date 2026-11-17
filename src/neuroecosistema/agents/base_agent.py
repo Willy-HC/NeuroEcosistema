@@ -1,6 +1,6 @@
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -23,7 +23,38 @@ class BaseAgent:
     captures: int = 0
     stagnation_steps: int = 0
 
+    visited_regions: set[tuple[int, int]] = field(
+    default_factory=set,
+    compare=False,
+    )
+
     alive: bool = True
+
+
+    def register_region(self, width, height, grid_size=5):
+        """Registra la región espacial ocupada por el agente."""
+
+        if width <= 0 or height <= 0:
+            raise ValueError(
+                "Las dimensiones deben ser positivas."
+            )
+
+        if grid_size <= 0:
+            raise ValueError(
+                "El tamaño de cuadrícula debe ser positivo."
+            )
+
+        column = min(
+            grid_size - 1,
+            max(0, int(self.x / width * grid_size)),
+        )
+
+        row = min(
+            grid_size - 1,
+            max(0, int(self.y / height * grid_size)),
+        )
+
+        self.visited_regions.add((column, row))
 
     def update(
         self,
@@ -84,6 +115,8 @@ class BaseAgent:
 
         if displacement < 0.1:
             self.stagnation_steps += 1
+
+        self.register_region(width, height)
 
         self.steps_survived += 1
         self.energy -= movement_cost

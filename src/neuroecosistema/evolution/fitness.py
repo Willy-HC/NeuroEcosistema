@@ -10,12 +10,13 @@ def normalize_value(value, maximum):
     return max(0.0, min(1.0, value / maximum))
 
 
+
 def calculate_prey_fitness(
     prey,
     max_steps,
     food_target=5,
 ):
-    """Calcula el fitness individual de una presa."""
+    """Evalúa supervivencia, alimentación y exploración."""
 
     survival_score = normalize_value(
         prey.steps_survived,
@@ -27,15 +28,21 @@ def calculate_prey_fitness(
         food_target,
     )
 
+    exploration_score = normalize_value(
+        len(prey.visited_regions),
+        25,
+    )
+
     stagnation_score = normalize_value(
         prey.stagnation_steps,
         max_steps,
     )
 
     fitness = (
-        0.6 * survival_score
-        + 0.4 * food_score
-        - 0.1 * stagnation_score
+        0.25 * survival_score
+        + 0.50 * food_score
+        + 0.20 * exploration_score
+        - 0.10 * stagnation_score
     )
 
     return max(0.0, fitness)
@@ -46,7 +53,7 @@ def calculate_predator_fitness(
     max_steps,
     capture_target=3,
 ):
-    """Calcula el fitness individual de un depredador."""
+    """Evalúa capturas, supervivencia y exploración."""
 
     survival_score = normalize_value(
         predator.steps_survived,
@@ -58,15 +65,21 @@ def calculate_predator_fitness(
         capture_target,
     )
 
+    exploration_score = normalize_value(
+        len(predator.visited_regions),
+        25,
+    )
+
     stagnation_score = normalize_value(
         predator.stagnation_steps,
         max_steps,
     )
 
     fitness = (
-        0.7 * capture_score
-        + 0.3 * survival_score
-        - 0.1 * stagnation_score
+        0.65 * capture_score
+        + 0.20 * survival_score
+        + 0.15 * exploration_score
+        - 0.10 * stagnation_score
     )
 
     return max(0.0, fitness)
