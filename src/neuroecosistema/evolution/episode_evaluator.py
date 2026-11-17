@@ -60,6 +60,10 @@ class EpisodeEvaluator:
             initial_food=environment_config["initial_food"],
             seed=self.seed,
             food_energy=energy["food_reward"],
+            food_respawn=environment_config.get(
+                "food_respawn", 0
+            ),
+            max_food=environment_config["initial_food"],
         )
 
         if species == "prey":
@@ -89,6 +93,7 @@ class EpisodeEvaluator:
         # Los oponentes sin red utilizan movimiento aleatorio.
         max_steps = simulation["max_steps"]
 
+
         for _ in range(max_steps):
             if not environment.prey or not environment.predators:
                 break
@@ -96,10 +101,12 @@ class EpisodeEvaluator:
             environment.update_agents(
                 movement_cost=energy["movement_cost"]
             )
-
+            
             environment.resolve_interactions(
                 capture_reward=energy["capture_reward"]
             )
+
+            environment.update_food()
 
         # evaluated_agents conserva referencias a todos los
         # individuos originales, incluso si fueron eliminados

@@ -23,6 +23,7 @@ class Plant:
 class Environment:
     """Administra el mundo, sus recursos y sus organismos."""
 
+
     def __init__(
         self,
         width: int,
@@ -30,12 +31,30 @@ class Environment:
         initial_food: int,
         seed: int | None = None,
         food_energy: float = 20.0,
+        food_respawn: int = 0,
+        max_food: int | None = None,
     ) -> None:
+        if initial_food < 0:
+            raise ValueError(
+                "La cantidad inicial de plantas no puede ser negativa."
+            )
+        if food_respawn < 0:
+            raise ValueError(
+                "El intervalo de reposición no puede ser negativo."
+            )
+        if max_food is None:
+            max_food = initial_food
+        if max_food < initial_food:
+            raise ValueError(
+                "El límite de plantas no puede ser menor que la cantidad inicial."
+            )
         self.width = width
         self.height = height
         self.random = random.Random(seed)
         self.food_energy = food_energy
-
+        self.food_respawn = food_respawn
+        self.max_food = max_food
+        self.step_count = 0
         self.plants: list[Plant] = []
         self.prey: list[Prey] = []
         self.predators: list[Predator] = []
@@ -48,18 +67,43 @@ class Environment:
 
         self.generate_plants(initial_food)
 
+
+    def spawn_plant(self) -> Plant:
+        """Genera una planta utilizando la semilla del entorno."""
+        margin = 20
+        x = self.random.randint(
+            margin,
+            self.width - margin,
+        )
+
+        y = self.random.randint(
+            margin,
+            self.height - margin,
+        )
+
+        plant = Plant(
+            x=x,
+            y=y,
+            energy=self.food_energy,
+        )
+
+        self.plants.append(plant)
+
+        return plant
+    
     def generate_plants(self, quantity: int) -> None:
         """Distribuye plantas aleatoriamente en el entorno."""
 
-        margin = 20
+        if quantity < 0:
+            raise ValueError(
+                "La cantidad de plantas no puede ser negativa."
+            )
 
         for _ in range(quantity):
-            x = self.random.randint(margin, self.width - margin)
-            y = self.random.randint(margin, self.height - margin)
+            if len(self.plants) >= self.max_food:
+                break
 
-            self.plants.append(
-                Plant(x=x, y=y, energy=self.food_energy)
-            )
+            self.spawn_plant()
 
     def generate_agents(
         self,
@@ -141,6 +185,19 @@ class Environment:
             for agent_id, network in self.predator_networks.items()
             if agent_id in active_predator_ids
         }
+
+
+    def update_food(self) -> None:
+        """Repone una planta cada cierto número de pasos."""
+        self.step_count += 1
+        if self.food_respawn == 0:
+            return
+        if self.step_count % self.food_respawn != 0:
+            return
+        if len(self.plants) >= self.max_food:
+            return
+
+        self.spawn_plant()
 
     def resolve_interactions(self, capture_reward: float = 30.0) -> None:
         """Resuelve la alimentación y las capturas del ciclo."""

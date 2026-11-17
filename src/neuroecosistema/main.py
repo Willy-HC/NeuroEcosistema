@@ -110,6 +110,10 @@ def main() -> None:
         initial_food=environment_config["initial_food"],
         seed=42,
         food_energy=energy_config["food_reward"],
+        food_respawn=environment_config.get(
+            "food_respawn", 0
+        ),
+        max_food=environment_config["initial_food"],
     )
 
     # Generar poblaciones
@@ -143,9 +147,11 @@ def main() -> None:
         )
 
         # Resolver alimentación y cacería
+        environment.update_agents(movement_cost = movement_cost)
         environment.resolve_interactions(
             capture_reward=energy_config["capture_reward"]
         )
+        environment.update_food()
 
         # Renderizar ecosistema
         renderer.draw_environment(environment)
