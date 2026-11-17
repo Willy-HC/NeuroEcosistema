@@ -21,6 +21,7 @@ def main() -> None:
     pygame.init()
 
     config = load_configuration()
+    energy_config = config["energy"]
 
     simulation_config = config["simulation"]
     environment_config = config["environment"]
@@ -29,7 +30,8 @@ def main() -> None:
     height = simulation_config["height"]
     fps = simulation_config["fps"]
 
-    movement_cost = config["energy"]["movement_cost"]
+    energy_config = config["energy"]
+    movement_cost = energy_config["movement_cost"]
 
     screen = pygame.display.set_mode((width, height))
     pygame.display.set_caption("NeuroEcosistema: Evolución artificial")
@@ -37,11 +39,12 @@ def main() -> None:
     clock = pygame.time.Clock()
 
     environment = Environment(
-        width=width,
-        height=height,
-        initial_food=environment_config["initial_food"],
-        seed=42,
-    )
+    width=width,
+    height=height,
+    initial_food=environment_config["initial_food"],
+    seed=42,
+    food_energy=energy_config["food_reward"],
+)
 
     population_config = config["population"]
     environment.generate_agents(
@@ -58,9 +61,17 @@ def main() -> None:
             if event.type == pygame.QUIT:
                 running = False
 
-        environment.update_agents(movement_cost)
+        environment.update_agents(
+            movement_cost=movement_cost
+        )
+
+        environment.resolve_interactions(
+            capture_reward=energy_config["capture_reward"]
+        )
+
         renderer.draw_environment(environment)
         renderer.draw_agents(environment)
+        renderer.draw_statistics(environment)
 
         pygame.display.flip()
         clock.tick(fps)

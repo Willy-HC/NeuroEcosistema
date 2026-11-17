@@ -1,3 +1,4 @@
+import math
 import random
 from dataclasses import dataclass
 
@@ -16,7 +17,7 @@ class Plant:
 
 
 class Environment:
-    """Administra las dimensiones y los recursos del entorno."""
+    """Administra el mundo, sus recursos y sus organismos."""
 
     def __init__(
         self,
@@ -24,19 +25,24 @@ class Environment:
         height: int,
         initial_food: int,
         seed: int | None = None,
+        food_energy: float = 20.0,
     ) -> None:
         self.width = width
         self.height = height
         self.random = random.Random(seed)
-        self.plants: list[Plant] = []
+        self.food_energy = food_energy
 
+        self.plants: list[Plant] = []
         self.prey: list[Prey] = []
         self.predators: list[Predator] = []
+
+        self.total_food_consumed = 0
+        self.total_captures = 0
 
         self.generate_plants(initial_food)
 
     def generate_plants(self, quantity: int) -> None:
-        """Distribuye las plantas aleatoriamente en el entorno."""
+        """Distribuye plantas aleatoriamente en el entorno."""
 
         margin = 20
 
@@ -44,7 +50,9 @@ class Environment:
             x = self.random.randint(margin, self.width - margin)
             y = self.random.randint(margin, self.height - margin)
 
-            self.plants.append(Plant(x=x, y=y))
+            self.plants.append(
+                Plant(x=x, y=y, energy=self.food_energy)
+            )
 
     def generate_agents(
         self,
@@ -82,3 +90,47 @@ class Environment:
         self.predators = [
             agent for agent in self.predators if agent.alive
         ]
+
+    def resolve_interactions(self, capture_reward: float = 30.0) -> None:
+        """Resuelve la alimentación y las capturas del ciclo."""
+
+        # Alimentación de las presas.
+        for prey in self.prey:
+            for plant in self.plants[:]:
+                distance = math.dist(
+                    (prey.x, prey.y),
+                    (plant.x, plant.y),
+                )
+
+                collision_distance = prey.radius + plant.radius
+
+                if distance <= collision_distance:
+                    prey.energy = min(100.0, prey.energy + plant.energy)
+                    self.plants.remove(plant)
+                    self.total_food_consumed += 1
+                    break
+
+        # Cacería de los depredadores.
+        remaining_prey = self.prey[:]
+
+        for predator in self.predators:
+            for prey in remaining_prey:
+                distance = math.dist(
+                    (predator.x, predator.y),
+                    (prey.x, prey.y),
+                )
+
+                collision_distance = predator.radius + prey.radius
+
+                if distance <= collision_distance:
+                    prey.alive = False
+                    predator.energy = min(
+                        100.0,
+                        predator.energy + capture_reward,
+                    )
+
+                    remaining_prey.remove(prey)
+                    self.total_captures += 1
+                    break
+
+        self.prey = remaining_prey

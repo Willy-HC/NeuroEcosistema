@@ -53,3 +53,20 @@ class Renderer:
                 (int(agent.x), int(agent.y)),
                 agent.radius,
             )
+
+    def draw_statistics(self, environment: Environment) -> None:
+        """Muestra estadísticas básicas del ecosistema."""
+
+        font = pygame.font.Font(None, 26)
+
+        statistics = [
+            f"Presas: {len(environment.prey)}",
+            f"Depredadores: {len(environment.predators)}",
+            f"Plantas: {len(environment.plants)}",
+            f"Alimento consumido: {environment.total_food_consumed}",
+            f"Capturas: {environment.total_captures}",
+        ]
+
+        for index, text in enumerate(statistics):
+            surface = font.render(text, True, (255, 255, 255))
+            self.screen.blit(surface, (15, 15 + index * 25))
