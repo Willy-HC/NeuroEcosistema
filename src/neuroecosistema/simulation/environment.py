@@ -40,6 +40,9 @@ class Environment:
         self.prey: list[Prey] = []
         self.predators: list[Predator] = []
 
+        self.prey_networks = {}
+        self.predator_networks = {}
+
         self.total_food_consumed = 0
         self.total_captures = 0
 
@@ -184,6 +187,14 @@ class Environment:
                     break
 
         self.prey = remaining_prey
+        
+        active_prey_ids = {id(agent) for agent in self.prey}
+
+        self.prey_networks = {
+            agent_id: network
+            for agent_id, network in self.prey_networks.items()
+            if agent_id in active_prey_ids
+        }
 
     def initialize_neural_networks(self, network_config):
         """Asigna una red neuronal independiente a cada agente."""
