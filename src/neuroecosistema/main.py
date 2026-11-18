@@ -141,17 +141,20 @@ def main() -> None:
             if event.type == pygame.QUIT:
                 running = False
 
-        # Actualizar agentes mediante sus redes neuronales
+
+        # Actualizar agentes una sola vez por fotograma.
         environment.update_agents(
             movement_cost=movement_cost
         )
 
-        # Resolver alimentación y cacería
-        environment.update_agents(movement_cost = movement_cost)
+        # Resolver alimentación y cacería.
         environment.resolve_interactions(
             capture_reward=energy_config["capture_reward"]
         )
+
+        # Reponer alimento.
         environment.update_food()
+
 
         # Renderizar ecosistema
         renderer.draw_environment(environment)

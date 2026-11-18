@@ -22,6 +22,8 @@ class BaseAgent:
     food_eaten: int = 0
     captures: int = 0
     stagnation_steps: int = 0
+    distance_traveled: float = 0.0
+    steps_near_wall: int = 0
 
     visited_regions: set[tuple[int, int]] = field(
     default_factory=set,
@@ -113,8 +115,23 @@ class BaseAgent:
             (self.x, self.y),
         )
 
+        self.distance_traveled += displacement
+
         if displacement < 0.1:
             self.stagnation_steps += 1
+
+        # Registrar pasos cerca de los límites del mapa.
+        wall_margin = min(width, height) * 0.05
+
+        distance_to_wall = min(
+            self.x - self.radius,
+            width - self.radius - self.x,
+            self.y - self.radius,
+            height - self.radius - self.y,
+        )
+
+        if distance_to_wall <= wall_margin:
+            self.steps_near_wall += 1
 
         self.register_region(width, height)
 
