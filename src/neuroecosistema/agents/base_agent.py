@@ -25,6 +25,7 @@ class BaseAgent:
     stagnation_steps: int = 0
     distance_traveled: float = 0.0
     steps_near_wall: int = 0
+    food_approach_progress: float = 0.0
 
     # Estado del mecanismo de recuperación de paredes.
     wall_escape_active: bool = False

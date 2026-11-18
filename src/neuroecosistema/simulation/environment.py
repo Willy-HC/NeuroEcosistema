@@ -129,6 +129,21 @@ class Environment:
 
             self.predators.append(Predator(x=x, y=y))
 
+    @staticmethod
+    def nearest_plant(prey, plants):
+        """Devuelve la planta más cercana a una presa."""
+
+        if not plants:
+            return None
+
+        return min(
+            plants,
+            key=lambda plant: math.dist(
+                (prey.x, prey.y),
+                (plant.x, plant.y),
+            ),
+        )
+
     def update_agents(
     self,
     movement_cost=0.1,
@@ -200,12 +215,12 @@ class Environment:
         for predator in self.predators:
             network = self.predator_networks.get(id(predator))
 
-            if strategy == "heuristic":
+            if predator_strategy == "heuristic":
                 direction = calculate_heuristic_direction(
                     predator,
                     self,
                 )
-            elif strategy == "random":
+            elif predator_strategy == "random":
                 direction = None
             else:
                 direction = (
@@ -220,6 +235,25 @@ class Environment:
 
             decisions.append((predator, direction))
 
+        # Registrar objetivos antes del movimiento.
+        food_targets = {}
+
+        for prey in self.prey:
+            target = self.nearest_plant(prey, self.plants)
+
+            if target is None:
+                continue
+
+            distance_before = math.dist(
+                (prey.x, prey.y),
+                (target.x, target.y),
+            )
+
+            food_targets[id(prey)] = (
+                target,
+                distance_before,
+            )
+
         # Calcular todas las decisiones antes de mover agentes.
         for agent, direction in decisions:
             agent.update(
@@ -229,6 +263,27 @@ class Environment:
                 movement_cost,
                 neural_direction=direction,
             )
+
+        # Medir acercamiento a la misma planta seleccionada.
+        for prey in self.prey:
+            target_info = food_targets.get(id(prey))
+
+            if target_info is None:
+                continue
+
+            target, distance_before = target_info
+
+            distance_after = math.dist(
+                (prey.x, prey.y),
+                (target.x, target.y),
+            )
+
+            progress = max(
+                0.0,
+                distance_before - distance_after,
+            )
+
+            prey.food_approach_progress += progress
 
         self.prey = [
             agent for agent in self.prey

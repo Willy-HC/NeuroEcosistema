@@ -1,6 +1,7 @@
 
 import pytest
 
+from neuroecosistema.agents.prey import Prey
 from neuroecosistema.evolution.behavior_evaluator import (
     BehaviorEvaluator,
 )
@@ -241,3 +242,33 @@ def test_invalid_predator_strategy_raises_error():
             prey_strategy="random",
             predator_strategy="invalid",
         )
+
+def test_predator_specific_strategy_is_applied():
+    environment = Environment(
+        width=500,
+        height=500,
+        initial_food=0,
+        seed=42,
+    )
+
+    environment.generate_agents(
+        prey_quantity=0,
+        predator_quantity=1,
+    )
+
+    predator = environment.predators[0]
+    predator.x = 100
+    predator.y = 100
+
+    environment.prey = [
+        Prey(x=200, y=100)
+    ]
+
+    environment.update_agents(
+        strategy="random",
+        prey_strategy="random",
+        predator_strategy="heuristic",
+    )
+
+    assert predator.x > 100
+    assert predator.y == pytest.approx(100)
