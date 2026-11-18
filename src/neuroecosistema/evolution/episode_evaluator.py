@@ -95,7 +95,7 @@ class EpisodeEvaluator:
 
 
         for _ in range(max_steps):
-            if not environment.prey or not environment.predators:
+            if not environment.prey and not environment.predators:
                 break
 
             environment.update_agents(
@@ -185,7 +185,7 @@ class EpisodeEvaluator:
         max_steps = simulation["max_steps"]
 
         for _ in range(max_steps):
-            if not environment.prey or not environment.predators:
+            if not environment.prey and not environment.predators:
                 break
 
             environment.update_agents(

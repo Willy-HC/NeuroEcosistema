@@ -18,6 +18,7 @@ class BaseAgent:
     direction_timer: int = 0
     direction_change_interval: int = 45
 
+    # Métricas de comportamiento.
     steps_survived: int = 0
     food_eaten: int = 0
     captures: int = 0
@@ -25,13 +26,16 @@ class BaseAgent:
     distance_traveled: float = 0.0
     steps_near_wall: int = 0
 
+    # Estado del mecanismo de recuperación de paredes.
+    wall_escape_active: bool = False
+
+    # Regiones exploradas por el agente.
     visited_regions: set[tuple[int, int]] = field(
-    default_factory=set,
-    compare=False,
+        default_factory=set,
+        compare=False,
     )
 
     alive: bool = True
-
 
     def register_region(self, width, height, grid_size=5):
         """Registra la región espacial ocupada por el agente."""
@@ -71,6 +75,7 @@ class BaseAgent:
         if not self.alive:
             return
 
+        # Movimiento controlado por la red neuronal.
         if neural_direction is not None:
             dx, dy = neural_direction
             magnitude = math.hypot(dx, dy)
@@ -84,6 +89,7 @@ class BaseAgent:
                 movement_x = 0.0
                 movement_y = 0.0
 
+        # Movimiento aleatorio cuando no existe control neuronal.
         else:
             self.direction_timer += 1
 
@@ -94,13 +100,15 @@ class BaseAgent:
             movement_x = math.cos(self.direction) * self.speed
             movement_y = math.sin(self.direction) * self.speed
 
-
+        # Guardar posición anterior.
         previous_x = self.x
         previous_y = self.y
 
+        # Aplicar movimiento.
         self.x += movement_x
         self.y += movement_y
 
+        # Mantener al agente dentro del entorno.
         self.x = max(
             self.radius,
             min(width - self.radius, self.x),
@@ -110,13 +118,16 @@ class BaseAgent:
             min(height - self.radius, self.y),
         )
 
+        # Calcular desplazamiento real.
         displacement = math.dist(
             (previous_x, previous_y),
             (self.x, self.y),
         )
 
+        # Registrar distancia recorrida.
         self.distance_traveled += displacement
 
+        # Registrar pasos de estancamiento acumulados.
         if displacement < 0.1:
             self.stagnation_steps += 1
 
@@ -133,8 +144,10 @@ class BaseAgent:
         if distance_to_wall <= wall_margin:
             self.steps_near_wall += 1
 
+        # Registrar regiones exploradas.
         self.register_region(width, height)
 
+        # Actualizar supervivencia y energía.
         self.steps_survived += 1
         self.energy -= movement_cost
 

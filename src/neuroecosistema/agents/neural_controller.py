@@ -27,7 +27,7 @@ def apply_wall_avoidance(
     margin=40.0,
     strength=1.5,
 ):
-    """Corrige gradualmente el movimiento cerca de los bordes."""
+    """Evita paredes mediante recuperación con histéresis."""
 
     if width <= 0 or height <= 0:
         raise ValueError(
@@ -44,41 +44,36 @@ def apply_wall_avoidance(
             "La intensidad de corrección no puede ser negativa."
         )
 
-    left_distance = agent.x
-    right_distance = width - agent.x
-    top_distance = agent.y
-    bottom_distance = height - agent.y
+    left = agent.x - agent.radius
+    right = width - agent.radius - agent.x
+    top = agent.y - agent.radius
+    bottom = height - agent.radius - agent.y
 
-    correction_x = 0.0
-    correction_y = 0.0
-
-    if left_distance < margin:
-        correction_x += (
-            1.0 - max(0.0, left_distance) / margin
-        )
-
-    if right_distance < margin:
-        correction_x -= (
-            1.0 - max(0.0, right_distance) / margin
-        )
-
-    if top_distance < margin:
-        correction_y += (
-            1.0 - max(0.0, top_distance) / margin
-        )
-
-    if bottom_distance < margin:
-        correction_y -= (
-            1.0 - max(0.0, bottom_distance) / margin
-        )
-
-    corrected_dx = dx + strength * correction_x
-    corrected_dy = dy + strength * correction_y
-
-    return normalize_direction(
-        corrected_dx,
-        corrected_dy,
+    nearest_distance = min(
+        left, right, top, bottom
     )
+
+    # Activar recuperación cerca de los límites.
+    if nearest_distance <= margin:
+        agent.wall_escape_active = True
+
+    # Desactivar solo al alcanzar una zona más segura.
+    if nearest_distance >= margin * 2:
+        agent.wall_escape_active = False
+
+    if agent.wall_escape_active:
+        center_x = width / 2
+        center_y = height / 2
+
+        escape_dx = center_x - agent.x
+        escape_dy = center_y - agent.y
+
+        return normalize_direction(
+            escape_dx,
+            escape_dy,
+        )
+
+    return normalize_direction(dx, dy)
 
 
 def calculate_neural_direction(agent, network, environment):
