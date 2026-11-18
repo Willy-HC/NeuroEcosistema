@@ -18,6 +18,7 @@ METRICS = (
     "mean_wall_ratio",
     "mean_distance",
     "mean_food_approach_progress",
+    "mean_food_net_progress",
 )
 
 def run_evaluations(
