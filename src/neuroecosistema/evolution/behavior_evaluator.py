@@ -201,4 +201,7 @@ class BehaviorEvaluator:
             "mean_distance": average(
                 [agent.distance_traveled for agent in agents]
             ),
+            "mean_food_approach_progress": average(
+                [agent.food_approach_progress for agent in agents]
+            ),
         }

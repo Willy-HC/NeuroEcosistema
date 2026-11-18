@@ -17,6 +17,7 @@ METRICS = (
     "mean_exploration",
     "mean_wall_ratio",
     "mean_distance",
+    "mean_food_approach_progress",
 )
 
 
