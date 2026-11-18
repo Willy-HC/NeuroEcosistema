@@ -2,6 +2,9 @@ import math
 import random
 from dataclasses import dataclass
 
+from neuroecosistema.agents.heuristic_controller import (
+    calculate_heuristic_direction,
+)
 from neuroecosistema.agents.neural_controller import (
     calculate_neural_direction,
 )
@@ -126,36 +129,98 @@ class Environment:
 
             self.predators.append(Predator(x=x, y=y))
 
+    def update_agents(
+    self,
+    movement_cost=0.1,
+    strategy="auto",
+    prey_strategy=None,
+    predator_strategy=None,
+    ) -> None:
+        """Actualiza los agentes según la estrategia seleccionada.
 
-    def update_agents(self, movement_cost=0.1):
-        """Actualiza los agentes usando decisiones neuronales."""
+        auto:
+            Utiliza redes si están asignadas; de lo contrario,
+            movimiento aleatorio.
+
+        random:
+            Utiliza movimiento aleatorio.
+
+        heuristic:
+            Busca el alimento o la presa más cercana.
+
+        neural:
+            Utiliza las redes neuronales asignadas.
+        """
+
+        valid_strategies = {
+            "auto",
+            "random",
+            "heuristic",
+            "neural",
+        }
+
+        if strategy not in valid_strategies:
+            raise ValueError(
+                f"Estrategia no válida: {strategy}"
+            )
+
+        if prey_strategy is None:
+            prey_strategy = strategy
+
+        if predator_strategy is None:
+            predator_strategy = strategy
+
+        if prey_strategy not in valid_strategies:
+            raise ValueError("Estrategia de presas no válida.")
+
+        if predator_strategy not in valid_strategies:
+            raise ValueError("Estrategia de depredadores no válida.")
 
         decisions = []
 
         for prey in self.prey:
             network = self.prey_networks.get(id(prey))
 
-            direction = (
-                calculate_neural_direction(prey, network, self)
-                if network is not None
-                else None
-            )
+            if prey_strategy == "heuristic":
+                direction = calculate_heuristic_direction(
+                    prey,
+                    self,
+                )
+            elif prey_strategy == "random":
+                direction = None
+            else:
+                direction = (
+                    calculate_neural_direction(prey, network, self)
+                    if network is not None
+                    else None
+                )
 
             decisions.append((prey, direction))
 
         for predator in self.predators:
             network = self.predator_networks.get(id(predator))
 
-            direction = (
-                calculate_neural_direction(predator, network, self)
-                if network is not None
-                else None
-            )
+            if strategy == "heuristic":
+                direction = calculate_heuristic_direction(
+                    predator,
+                    self,
+                )
+            elif strategy == "random":
+                direction = None
+            else:
+                direction = (
+                    calculate_neural_direction(
+                        predator,
+                        network,
+                        self,
+                    )
+                    if network is not None
+                    else None
+                )
 
             decisions.append((predator, direction))
 
-        # Primero calculamos todas las decisiones.
-        # Después actualizamos las posiciones.
+        # Calcular todas las decisiones antes de mover agentes.
         for agent, direction in decisions:
             agent.update(
                 self.width,
@@ -165,14 +230,24 @@ class Environment:
                 neural_direction=direction,
             )
 
-        self.prey = [agent for agent in self.prey if agent.alive]
-        self.predators = [
-            agent for agent in self.predators if agent.alive
+        self.prey = [
+            agent for agent in self.prey
+            if agent.alive
         ]
 
-        # Descartar redes de agentes que ya no existen.
-        active_prey_ids = {id(agent) for agent in self.prey}
-        active_predator_ids = {id(agent) for agent in self.predators}
+        self.predators = [
+            agent for agent in self.predators
+            if agent.alive
+        ]
+
+        # Descartar redes de agentes eliminados.
+        active_prey_ids = {
+            id(agent) for agent in self.prey
+        }
+
+        active_predator_ids = {
+            id(agent) for agent in self.predators
+        }
 
         self.prey_networks = {
             agent_id: network

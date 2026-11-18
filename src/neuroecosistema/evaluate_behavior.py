@@ -25,11 +25,16 @@ def run_evaluations(
     neural_config,
     seeds=(42, 123, 456),
     model_dir=None,
+    strategy=None,
+    prey_strategy=None,
+    predator_strategy=None,
 ):
     """Ejecuta varios episodios reproducibles."""
 
     if not seeds:
-        raise ValueError("Debes proporcionar al menos una semilla.")
+        raise ValueError(
+            "Debes proporcionar al menos una semilla."
+        )
 
     evaluator = BehaviorEvaluator(
         simulation_config=simulation_config,
@@ -42,6 +47,9 @@ def run_evaluations(
         episode = evaluator.evaluate(
             seed=seed,
             model_dir=model_dir,
+            strategy=strategy,
+            prey_strategy=prey_strategy,
+            predator_strategy=predator_strategy,
         )
 
         for species in ("prey", "predator"):
@@ -127,6 +135,27 @@ def main():
     )
 
     parser.add_argument(
+        "--strategy",
+        choices=("random", "heuristic", "neural"),
+        default=None,
+        help="Estrategia de movimiento de los agentes.",
+    )
+
+    parser.add_argument(
+        "--prey-strategy",
+        choices=("random", "heuristic", "neural"),
+        default=None,
+        help="Estrategia específica para las presas.",
+    )
+
+    parser.add_argument(
+        "--predator-strategy",
+        choices=("random", "heuristic", "neural"),
+        default=None,
+        help="Estrategia específica para los depredadores.",
+    )
+
+    parser.add_argument(
         "--output",
         default="results/behavior",
     )
@@ -159,6 +188,9 @@ def main():
         neural_config=neural,
         seeds=args.seeds,
         model_dir=args.model_dir,
+        strategy=args.strategy,
+        prey_strategy=args.prey_strategy,
+        predator_strategy=args.predator_strategy,
     )
 
     paths = save_results(rows, args.output)

@@ -10,14 +10,56 @@ from neuroecosistema.simulation.environment import Environment
 
 
 class BehaviorEvaluator:
-    """Evalúa el comportamiento de agentes en episodios sin Pygame."""
+    """Evalúa el comportamiento de agentes sin Pygame."""
 
     def __init__(self, simulation_config, neural_config):
         self.simulation_config = simulation_config
         self.neural_config = neural_config
 
-    def evaluate(self, seed=42, model_dir=None):
-        """Ejecuta un episodio y devuelve métricas por especie."""
+    def evaluate(
+        self,
+        seed=42,
+        model_dir=None,
+        strategy=None,
+        prey_strategy=None,
+        predator_strategy=None,
+    ):
+        """Evalúa un episodio con estrategias independientes."""
+
+        if strategy is None:
+            strategy = "neural" if model_dir is not None else "random"
+
+        if prey_strategy is None:
+            prey_strategy = strategy
+
+        if predator_strategy is None:
+            predator_strategy = strategy
+
+        valid_strategies = {"random", "heuristic", "neural"}
+
+        if strategy not in valid_strategies:
+            raise ValueError("Estrategia general no válida.")
+
+        if prey_strategy not in valid_strategies:
+            raise ValueError("Estrategia de presas no válida.")
+
+        if predator_strategy not in valid_strategies:
+            raise ValueError("Estrategia de depredadores no válida.")
+
+        neural_required = (
+            prey_strategy == "neural"
+            or predator_strategy == "neural"
+        )
+
+        if neural_required and model_dir is None:
+            raise ValueError(
+                "Las estrategias neuronales requieren model_dir."
+            )
+
+        if not neural_required and model_dir is not None:
+            raise ValueError(
+                "model_dir solo se utiliza con estrategias neuronales."
+            )
 
         if model_dir is not None:
             model_dir = Path(model_dir)
@@ -45,11 +87,11 @@ class BehaviorEvaluator:
             predator_quantity=population["predators"],
         )
 
-        # Conservar referencias incluso si mueren o son capturados.
+
         original_prey = environment.prey[:]
         original_predators = environment.predators[:]
 
-        if model_dir is not None:
+        if neural_required:
             environment.initialize_neural_networks(
                 self.neural_config
             )
@@ -57,20 +99,24 @@ class BehaviorEvaluator:
             models = (
                 (
                     "prey",
+                    prey_strategy,
                     original_prey,
                     environment.prey_networks,
                 ),
                 (
                     "predator",
+                    predator_strategy,
                     original_predators,
                     environment.predator_networks,
                 ),
             )
 
-            for species, agents, networks in models:
-                model_path = (
-                    model_dir / f"best_{species}.npz"
-                )
+            for species, selected_strategy, agents, networks in models:
+                if selected_strategy != "neural":
+                    networks.clear()
+                    continue
+
+                model_path = model_dir / f"best_{species}.npz"
 
                 trained_network = load_trained_network(
                     model_path,
@@ -85,11 +131,13 @@ class BehaviorEvaluator:
         steps_executed = 0
 
         for _ in range(simulation["max_steps"]):
-            if not environment.prey or not environment.predators:
+            if not environment.prey and not environment.predators:
                 break
 
             environment.update_agents(
-                movement_cost=energy["movement_cost"]
+                movement_cost=energy["movement_cost"],
+                prey_strategy=prey_strategy,
+                predator_strategy=predator_strategy,
             )
 
             environment.resolve_interactions(
