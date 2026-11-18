@@ -26,6 +26,17 @@ class BaseAgent:
     distance_traveled: float = 0.0
     steps_near_wall: int = 0
     food_approach_progress: float = 0.0
+    
+    # Seguimiento del progreso hacia una planta.
+    food_net_progress: float = 0.0
+
+    # Estado temporal del objetivo alimentario.
+    food_target_id: int | None = field(
+        default=None,
+        compare=False,
+    )
+    food_target_initial_distance: float = 0.0
+    food_target_min_distance: float = 0.0
 
     # Estado del mecanismo de recuperación de paredes.
     wall_escape_active: bool = False
@@ -37,6 +48,33 @@ class BaseAgent:
     )
 
     alive: bool = True
+
+    def register_food_target_progress(
+        self,
+        target_id,
+        distance,
+    ):
+        """Registra el mejor acercamiento a un objetivo alimentario."""
+
+        if distance < 0:
+            raise ValueError(
+                "La distancia al objetivo no puede ser negativa."
+            )
+
+        if self.food_target_id != target_id:
+            self.food_target_id = target_id
+            self.food_target_initial_distance = distance
+            self.food_target_min_distance = distance
+            return
+
+        previous_minimum = self.food_target_min_distance
+
+        if distance < previous_minimum:
+            self.food_target_min_distance = distance
+
+            self.food_net_progress += (
+                previous_minimum - distance
+            )
 
     def register_region(self, width, height, grid_size=5):
         """Registra la región espacial ocupada por el agente."""

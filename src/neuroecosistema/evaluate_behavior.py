@@ -20,7 +20,6 @@ METRICS = (
     "mean_food_approach_progress",
 )
 
-
 def run_evaluations(
     simulation_config,
     neural_config,

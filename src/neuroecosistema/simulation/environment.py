@@ -278,6 +278,16 @@ class Environment:
                 (target.x, target.y),
             )
 
+            prey.register_food_target_progress(
+                target_id=id(target),
+                distance=distance_before,
+            )
+
+            prey.register_food_target_progress(
+                target_id=id(target),
+                distance=distance_after,
+            )
+
             progress = max(
                 0.0,
                 distance_before - distance_after,
