@@ -269,6 +269,9 @@ class Environment:
             target_info = food_targets.get(id(prey))
 
             if target_info is None:
+                prey.food_target_id = None
+                prey.food_target_initial_distance = 0.0
+                prey.food_target_min_distance = 0.0
                 continue
 
             target, distance_before = target_info

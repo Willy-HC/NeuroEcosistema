@@ -29,6 +29,7 @@ class BaseAgent:
     
     # Seguimiento del progreso hacia una planta.
     food_net_progress: float = 0.0
+    food_target_switches: int = 0
 
     # Estado temporal del objetivo alimentario.
     food_target_id: int | None = field(
@@ -54,7 +55,7 @@ class BaseAgent:
         target_id,
         distance,
     ):
-        """Registra el mejor acercamiento a un objetivo alimentario."""
+        """Registra el progreso y los cambios de objetivo alimentario."""
 
         if distance < 0:
             raise ValueError(
@@ -62,6 +63,9 @@ class BaseAgent:
             )
 
         if self.food_target_id != target_id:
+            if self.food_target_id is not None:
+                self.food_target_switches += 1
+
             self.food_target_id = target_id
             self.food_target_initial_distance = distance
             self.food_target_min_distance = distance
