@@ -1,4 +1,7 @@
 
+import csv
+from pathlib import Path
+
 import numpy as np
 
 from neuroecosistema.evolution.episode_evaluator import (
@@ -7,6 +10,30 @@ from neuroecosistema.evolution.episode_evaluator import (
 from neuroecosistema.evolution.trainer import (
     EvolutionTrainer,
     _average_prey_diagnostics,
+)
+
+FITNESS_DIAGNOSTICS_COLUMNS = (
+    "generation",
+    "genome_index",
+    "fitness",
+    "survival",
+    "food",
+    "exploration",
+    "stagnation",
+    "food_eaten",
+    "steps_survived",
+    "visited_regions",
+    "stagnation_steps",
+)
+
+COEVOLUTION_OUTPUT_FILENAMES = (
+    "best_prey.npz",
+    "history_prey.csv",
+    "metadata_prey.json",
+    "best_predator.npz",
+    "history_predator.csv",
+    "metadata_predator.json",
+    "fitness_diagnostics_prey.csv",
 )
 
 
@@ -49,6 +76,34 @@ class CoevolutionTrainer:
         )
 
         self.generations = self.prey_trainer.generations
+        self.record_diagnostics = False
+        self.fitness_diagnostics = []
+
+    @staticmethod
+    def validate_output_directory(output_dir):
+        """Rechaza destinos que contienen resultados de otra ejecución."""
+
+        output_dir = Path(output_dir)
+
+        if output_dir.exists() and not output_dir.is_dir():
+            raise FileExistsError(
+                f"El destino no es un directorio: {output_dir}"
+            )
+
+        conflicts = [
+            output_dir / filename
+            for filename in COEVOLUTION_OUTPUT_FILENAMES
+            if (output_dir / filename).exists()
+        ]
+
+        if conflicts:
+            conflict_list = "\n".join(
+                str(path) for path in conflicts
+            )
+            raise FileExistsError(
+                "No se sobrescribirán resultados existentes:\n"
+                f"{conflict_list}"
+            )
 
     def evaluate_populations(
         self,
@@ -141,8 +196,11 @@ class CoevolutionTrainer:
 
         trainer.history.append(statistics)
 
-    def train(self):
+    def train(self, record_diagnostics=False):
         """Ejecuta generaciones de coevolución."""
+
+        self.record_diagnostics = record_diagnostics
+        self.fitness_diagnostics = []
 
         prey_genomes = (
             self.prey_trainer.create_initial_population()
@@ -155,13 +213,32 @@ class CoevolutionTrainer:
         for generation_index in range(self.generations):
             generation = generation_index + 1
 
-            prey_fitness, predator_fitness = (
-                self.evaluate_populations(
+            if record_diagnostics:
+                (
+                    prey_fitness,
+                    predator_fitness,
+                    diagnostics,
+                ) = self.evaluate_populations(
                     prey_genomes,
                     predator_genomes,
                     generation=generation_index,
+                    include_diagnostics=True,
                 )
-            )
+                self.fitness_diagnostics.extend(
+                    {
+                        "generation": generation,
+                        **diagnostic,
+                    }
+                    for diagnostic in diagnostics
+                )
+            else:
+                prey_fitness, predator_fitness = (
+                    self.evaluate_populations(
+                        prey_genomes,
+                        predator_genomes,
+                        generation=generation_index,
+                    )
+                )
 
             self.register_statistics(
                 self.prey_trainer,
@@ -210,6 +287,11 @@ class CoevolutionTrainer:
     def save_results(self, output_dir="results"):
         """Guarda modelos, historiales y metadatos."""
 
+        output_dir = Path(output_dir)
+
+        if self.record_diagnostics:
+            self.validate_output_directory(output_dir)
+
         prey_paths = self.prey_trainer.save_results(
             output_dir
         )
@@ -217,6 +299,22 @@ class CoevolutionTrainer:
         predator_paths = self.predator_trainer.save_results(
             output_dir
         )
+
+        if self.record_diagnostics:
+            diagnostics_path = (
+                output_dir / "fitness_diagnostics_prey.csv"
+            )
+            with diagnostics_path.open(
+                "w",
+                newline="",
+                encoding="utf-8",
+            ) as file:
+                writer = csv.DictWriter(
+                    file,
+                    fieldnames=FITNESS_DIAGNOSTICS_COLUMNS,
+                )
+                writer.writeheader()
+                writer.writerows(self.fitness_diagnostics)
 
         return {
             "prey": prey_paths,

@@ -65,7 +65,18 @@ def main():
         default="results",
     )
 
+    parser.add_argument(
+        "--record-diagnostics",
+        action="store_true",
+        help="Exportar diagnósticos de fitness de presas en coevolución.",
+    )
+
     args = parser.parse_args()
+
+    if args.record_diagnostics and args.species != "both":
+        parser.error(
+            "--record-diagnostics solo se puede usar con --species both"
+        )
 
     simulation, neural, evolution = load_configs()
 
@@ -86,10 +97,20 @@ def main():
             evolution_config=evolution,
         )
 
-        trainer.train()
+        if args.record_diagnostics:
+            trainer.validate_output_directory(args.output)
+            trainer.train(record_diagnostics=True)
+        else:
+            trainer.train()
+
         paths = trainer.save_results(args.output)
 
         print("\nCoevolución finalizada.")
+        if args.record_diagnostics:
+            print(
+                "Diagnósticos de fitness: "
+                f"{Path(args.output) / 'fitness_diagnostics_prey.csv'}"
+            )
 
         for species, species_paths in paths.items():
             species_trainer = (

@@ -1,4 +1,6 @@
 
+import csv
+
 import numpy as np
 import pytest
 
@@ -316,6 +318,254 @@ def test_coevolution_saves_both_models(configs, tmp_path):
 
         with np.load(paths[species]["model"]) as data:
             assert data["genome"].ndim == 1
+
+    assert not (tmp_path / "fitness_diagnostics_prey.csv").exists()
+
+
+def test_coevolution_exports_evaluated_prey_diagnostics(
+    configs,
+    tmp_path,
+    monkeypatch,
+):
+    plain_trainer = create_trainer(configs)
+    diagnostic_trainer = create_trainer(configs)
+    diagnostic_evaluations = []
+    plain_fitness_inputs = []
+    diagnostic_fitness_inputs = []
+    diagnostic_events = []
+    episode_calls = []
+
+    def capture_evaluations(trainer, records=None, events=None):
+        original_evaluate = trainer.evaluate_populations
+
+        def evaluate(
+            prey_genomes,
+            predator_genomes,
+            generation=0,
+            include_diagnostics=False,
+        ):
+            if events is not None:
+                events.append(("evaluate", generation + 1))
+
+            result = original_evaluate(
+                prey_genomes,
+                predator_genomes,
+                generation=generation,
+                include_diagnostics=include_diagnostics,
+            )
+
+            if records is not None:
+                records.append(
+                    (
+                        generation + 1,
+                        result[0].copy(),
+                        result[2],
+                    )
+                )
+
+            return result
+
+        trainer.evaluate_populations = evaluate
+
+    def capture_evolve(trainer, species, records, events=None):
+        algorithm = trainer.algorithm
+        original_evolve = algorithm.evolve
+
+        def evolve(genomes, fitness_values):
+            records.append((species, fitness_values.copy()))
+            if events is not None:
+                events.append(("evolve", species))
+            return original_evolve(genomes, fitness_values)
+
+        algorithm.evolve = evolve
+
+    original_evaluate_both = EpisodeEvaluator.evaluate_both
+
+    def count_episode_calls(
+        evaluator,
+        prey_genomes,
+        predator_genomes,
+        rotation=0,
+        include_diagnostics=False,
+    ):
+        episode_calls.append(
+            (evaluator.seed, rotation, include_diagnostics)
+        )
+        return original_evaluate_both(
+            evaluator,
+            prey_genomes,
+            predator_genomes,
+            rotation=rotation,
+            include_diagnostics=include_diagnostics,
+        )
+
+    monkeypatch.setattr(
+        EpisodeEvaluator,
+        "evaluate_both",
+        count_episode_calls,
+    )
+
+    capture_evaluations(
+        plain_trainer,
+    )
+    capture_evaluations(
+        diagnostic_trainer,
+        records=diagnostic_evaluations,
+        events=diagnostic_events,
+    )
+
+    capture_evolve(
+        plain_trainer.prey_trainer,
+        "prey",
+        plain_fitness_inputs,
+    )
+    capture_evolve(
+        plain_trainer.predator_trainer,
+        "predator",
+        plain_fitness_inputs,
+    )
+    capture_evolve(
+        diagnostic_trainer.prey_trainer,
+        "prey",
+        diagnostic_fitness_inputs,
+        diagnostic_events,
+    )
+    capture_evolve(
+        diagnostic_trainer.predator_trainer,
+        "predator",
+        diagnostic_fitness_inputs,
+        diagnostic_events,
+    )
+
+    plain_genomes = plain_trainer.train()
+    diagnostic_genomes = diagnostic_trainer.train(
+        record_diagnostics=True
+    )
+
+    for plain_genome, diagnostic_genome in zip(
+        plain_genomes,
+        diagnostic_genomes,
+    ):
+        np.testing.assert_array_equal(
+            plain_genome,
+            diagnostic_genome,
+        )
+
+    assert (
+        plain_trainer.prey_trainer.history
+        == diagnostic_trainer.prey_trainer.history
+    )
+    assert (
+        plain_trainer.predator_trainer.history
+        == diagnostic_trainer.predator_trainer.history
+    )
+    assert len(plain_fitness_inputs) == len(diagnostic_fitness_inputs)
+    for plain_input, diagnostic_input in zip(
+        plain_fitness_inputs,
+        diagnostic_fitness_inputs,
+    ):
+        assert plain_input[0] == diagnostic_input[0]
+        np.testing.assert_array_equal(
+            plain_input[1],
+            diagnostic_input[1],
+        )
+
+    assert diagnostic_events == [
+        ("evaluate", 1),
+        ("evolve", "prey"),
+        ("evolve", "predator"),
+        ("evaluate", 2),
+    ]
+    assert len(diagnostic_evaluations) == 2
+    expected_episode_calls = (
+        2
+        * diagnostic_trainer.generations
+        * len(diagnostic_trainer.evaluation_seeds)
+    )
+    assert len(episode_calls) == expected_episode_calls
+    assert len(
+        [
+            call
+            for call in episode_calls
+            if call[2]
+        ]
+    ) == (
+        diagnostic_trainer.generations
+        * len(diagnostic_trainer.evaluation_seeds)
+    )
+
+    plain_output = tmp_path / "plain"
+    diagnostic_output = tmp_path / "diagnostics"
+    plain_trainer.save_results(plain_output)
+    diagnostic_trainer.save_results(diagnostic_output)
+
+    diagnostics_path = (
+        diagnostic_output / "fitness_diagnostics_prey.csv"
+    )
+    assert not (
+        plain_output / "fitness_diagnostics_prey.csv"
+    ).exists()
+
+    expected_columns = [
+        "generation",
+        "genome_index",
+        "fitness",
+        "survival",
+        "food",
+        "exploration",
+        "stagnation",
+        "food_eaten",
+        "steps_survived",
+        "visited_regions",
+        "stagnation_steps",
+    ]
+
+    with diagnostics_path.open(
+        newline="",
+        encoding="utf-8",
+    ) as file:
+        reader = csv.DictReader(file)
+        rows = list(reader)
+        assert reader.fieldnames == expected_columns
+
+    population_size = diagnostic_trainer.prey_trainer.algorithm.population_size
+    assert len(rows) == diagnostic_trainer.generations * population_size
+
+    numeric_columns = expected_columns[2:]
+    for evaluation_index, (generation, fitness, diagnostics) in enumerate(
+        diagnostic_evaluations
+    ):
+        generation_rows = rows[
+            evaluation_index * population_size:
+            (evaluation_index + 1) * population_size
+        ]
+        assert [
+            int(row["genome_index"])
+            for row in generation_rows
+        ] == list(range(population_size))
+
+        for row, diagnostic in zip(generation_rows, diagnostics):
+            assert int(row["generation"]) == generation
+            for column in numeric_columns:
+                assert float(row[column]) == diagnostic[column]
+            assert diagnostic["fitness"] == fitness[
+                diagnostic["genome_index"]
+            ]
+
+    previous_contents = {
+        path.name: path.read_bytes()
+        for path in diagnostic_output.iterdir()
+        if path.is_file()
+    }
+    with pytest.raises(FileExistsError) as error:
+        diagnostic_trainer.save_results(diagnostic_output)
+
+    assert "fitness_diagnostics_prey.csv" in str(error.value)
+    assert previous_contents == {
+        path.name: path.read_bytes()
+        for path in diagnostic_output.iterdir()
+        if path.is_file()
+    }
 
 
 def test_coevolution_keeps_historical_best(configs):
