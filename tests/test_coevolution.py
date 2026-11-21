@@ -66,6 +66,28 @@ def create_trainer(configs):
     )
 
 
+def make_diagnostics(fitness_values, rotation):
+    diagnostics = []
+
+    for genome_index, fitness in enumerate(fitness_values):
+        diagnostics.append(
+            {
+                "genome_index": genome_index,
+                "survival": rotation + genome_index,
+                "food": 10 * rotation + genome_index,
+                "exploration": 2 * rotation + genome_index,
+                "stagnation": -3 * rotation - genome_index,
+                "fitness": fitness,
+                "food_eaten": 100 * rotation + genome_index,
+                "steps_survived": 200 * rotation + genome_index,
+                "visited_regions": 300 * rotation + genome_index,
+                "stagnation_steps": 400 * rotation + genome_index,
+            }
+        )
+
+    return list(reversed(diagnostics))
+
+
 def test_initial_populations_have_correct_size(configs):
     trainer = create_trainer(configs)
 
@@ -95,6 +117,125 @@ def test_joint_evaluation_returns_two_fitness_arrays(configs):
 
     assert np.all(np.isfinite(prey_fitness))
     assert np.all(np.isfinite(predator_fitness))
+
+
+def test_joint_diagnostics_average_per_genome_and_rotation(
+    configs,
+    monkeypatch,
+):
+    trainer = create_trainer(configs)
+    prey_genomes = trainer.prey_trainer.create_initial_population()
+    predator_genomes = (
+        trainer.predator_trainer.create_initial_population()
+    )
+    evaluations = []
+
+    def fake_evaluate_both(
+        evaluator,
+        evaluated_prey,
+        evaluated_predators,
+        rotation=0,
+        include_diagnostics=False,
+    ):
+        evaluations.append(
+            (evaluator.seed, rotation, include_diagnostics)
+        )
+        prey_fitness = np.asarray(
+            [
+                0.01 * rotation + genome_index * 0.001
+                for genome_index in range(len(evaluated_prey))
+            ]
+        )
+        predator_fitness = np.asarray(
+            [
+                0.03 * rotation + genome_index * 0.002
+                for genome_index in range(len(evaluated_predators))
+            ]
+        )
+
+        if include_diagnostics:
+            return (
+                prey_fitness,
+                predator_fitness,
+                make_diagnostics(prey_fitness, rotation),
+            )
+
+        return prey_fitness, predator_fitness
+
+    monkeypatch.setattr(
+        EpisodeEvaluator,
+        "evaluate_both",
+        fake_evaluate_both,
+    )
+
+    default_prey, default_predators = trainer.evaluate_populations(
+        prey_genomes,
+        predator_genomes,
+        generation=5,
+    )
+    evaluations.clear()
+
+    prey_fitness, predator_fitness, diagnostics = (
+        trainer.evaluate_populations(
+            prey_genomes,
+            predator_genomes,
+            generation=5,
+            include_diagnostics=True,
+        )
+    )
+
+    np.testing.assert_array_equal(prey_fitness, default_prey)
+    np.testing.assert_array_equal(predator_fitness, default_predators)
+    assert evaluations == [(42, 5, True), (123, 6, True)]
+    assert len(diagnostics) == len(prey_genomes)
+    assert [row["genome_index"] for row in diagnostics] == list(
+        range(len(prey_genomes))
+    )
+
+    diagnostic = diagnostics[2]
+    assert diagnostic == {
+        "genome_index": 2,
+        "survival": 7.5,
+        "food": 57.0,
+        "exploration": 13.0,
+        "stagnation": -18.5,
+        "fitness": prey_fitness[2],
+        "food_eaten": 552.0,
+        "steps_survived": 1102.0,
+        "visited_regions": 1652.0,
+        "stagnation_steps": 2202.0,
+    }
+    assert all(
+        row["fitness"] == prey_fitness[row["genome_index"]]
+        for row in diagnostics
+    )
+
+
+def test_joint_diagnostics_are_reproducible(configs):
+    trainer = create_trainer(configs)
+    prey_genomes = trainer.prey_trainer.create_initial_population()
+    predator_genomes = (
+        trainer.predator_trainer.create_initial_population()
+    )
+
+    first_prey, first_predators, first_diagnostics = (
+        trainer.evaluate_populations(
+            prey_genomes,
+            predator_genomes,
+            include_diagnostics=True,
+        )
+    )
+    second_prey, second_predators, second_diagnostics = (
+        trainer.evaluate_populations(
+            prey_genomes,
+            predator_genomes,
+            include_diagnostics=True,
+        )
+    )
+
+    np.testing.assert_array_equal(first_prey, second_prey)
+    np.testing.assert_array_equal(first_predators, second_predators)
+    assert first_diagnostics == second_diagnostics
 
 
 def test_joint_evaluation_rejects_different_sizes(configs):

@@ -4,7 +4,10 @@ import numpy as np
 from neuroecosistema.evolution.episode_evaluator import (
     EpisodeEvaluator,
 )
-from neuroecosistema.evolution.trainer import EvolutionTrainer
+from neuroecosistema.evolution.trainer import (
+    EvolutionTrainer,
+    _average_prey_diagnostics,
+)
 
 
 class CoevolutionTrainer:
@@ -52,11 +55,13 @@ class CoevolutionTrainer:
         prey_genomes,
         predator_genomes,
         generation=0,
+        include_diagnostics=False,
     ):
         """Promedia el fitness de ambas especies entre episodios."""
 
         prey_results = []
         predator_results = []
+        diagnostic_results = []
 
         for index, seed in enumerate(self.evaluation_seeds):
             evaluator = EpisodeEvaluator(
@@ -67,21 +72,51 @@ class CoevolutionTrainer:
 
             rotation = generation + index
 
-            prey_fitness, predator_fitness = (
-                evaluator.evaluate_both(
+            if include_diagnostics:
+                (
+                    prey_fitness,
+                    predator_fitness,
+                    diagnostics,
+                ) = evaluator.evaluate_both(
                     prey_genomes,
                     predator_genomes,
                     rotation=rotation,
+                    include_diagnostics=True,
                 )
-            )
+                diagnostic_results.append(diagnostics)
+            else:
+                prey_fitness, predator_fitness = (
+                    evaluator.evaluate_both(
+                        prey_genomes,
+                        predator_genomes,
+                        rotation=rotation,
+                    )
+                )
 
             prey_results.append(prey_fitness)
             predator_results.append(predator_fitness)
 
-        return (
-            np.mean(np.stack(prey_results), axis=0),
-            np.mean(np.stack(predator_results), axis=0),
+        mean_prey_fitness = np.mean(
+            np.stack(prey_results),
+            axis=0,
         )
+        mean_predator_fitness = np.mean(
+            np.stack(predator_results),
+            axis=0,
+        )
+
+        if include_diagnostics:
+            diagnostics = _average_prey_diagnostics(
+                diagnostic_results,
+                mean_prey_fitness,
+            )
+            return (
+                mean_prey_fitness,
+                mean_predator_fitness,
+                diagnostics,
+            )
+
+        return mean_prey_fitness, mean_predator_fitness
 
     @staticmethod
     def register_statistics(trainer, genomes, fitness, generation):

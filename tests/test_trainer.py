@@ -4,6 +4,7 @@ import json
 import numpy as np
 import pytest
 
+from neuroecosistema.evolution.episode_evaluator import EpisodeEvaluator
 from neuroecosistema.evolution.trainer import EvolutionTrainer
 
 SIMULATION_CONFIG = {
@@ -56,6 +57,28 @@ def create_trainer(species="prey"):
     )
 
 
+def make_diagnostics(fitness_values, offset):
+    diagnostics = []
+
+    for genome_index, fitness in enumerate(fitness_values):
+        diagnostics.append(
+            {
+                "genome_index": genome_index,
+                "survival": offset + genome_index,
+                "food": 2 * offset + genome_index,
+                "exploration": 3 * offset + genome_index,
+                "stagnation": -offset - genome_index,
+                "fitness": fitness,
+                "food_eaten": 10 * offset + genome_index,
+                "steps_survived": 20 * offset + genome_index,
+                "visited_regions": 30 * offset + genome_index,
+                "stagnation_steps": 40 * offset + genome_index,
+            }
+        )
+
+    return diagnostics
+
+
 def test_initial_population_size():
     trainer = create_trainer()
 
@@ -91,6 +114,99 @@ def test_population_evaluation_returns_fitness():
 
     assert fitness.shape == (6,)
     assert np.all(np.isfinite(fitness))
+
+
+def test_population_diagnostics_average_per_genome_and_seed(monkeypatch):
+    trainer = create_trainer()
+    genomes = trainer.create_initial_population()
+    evaluated_seeds = []
+
+    def fake_evaluate(
+        evaluator,
+        evaluated_genomes,
+        species="prey",
+        include_diagnostics=False,
+    ):
+        offset = 1 if evaluator.seed == 42 else 3
+        evaluated_seeds.append(evaluator.seed)
+        fitness = np.asarray(
+            [
+                0.1 * offset + genome_index * 0.01
+                for genome_index in range(len(evaluated_genomes))
+            ],
+            dtype=np.float64,
+        )
+        diagnostics = make_diagnostics(fitness, offset)
+
+        if include_diagnostics:
+            return fitness, diagnostics
+
+        return fitness
+
+    monkeypatch.setattr(EpisodeEvaluator, "evaluate", fake_evaluate)
+
+    default_fitness = trainer.evaluate_population(genomes)
+    evaluated_seeds.clear()
+    mean_fitness, diagnostics = trainer.evaluate_population(
+        genomes,
+        include_diagnostics=True,
+    )
+
+    np.testing.assert_array_equal(mean_fitness, default_fitness)
+    assert evaluated_seeds == [42, 123]
+    assert len(diagnostics) == len(genomes)
+    assert [row["genome_index"] for row in diagnostics] == list(
+        range(len(genomes))
+    )
+
+    diagnostic = diagnostics[2]
+    assert diagnostic == {
+        "genome_index": 2,
+        "survival": 4.0,
+        "food": 6.0,
+        "exploration": 8.0,
+        "stagnation": -4.0,
+        "fitness": mean_fitness[2],
+        "food_eaten": 22.0,
+        "steps_survived": 42.0,
+        "visited_regions": 62.0,
+        "stagnation_steps": 82.0,
+    }
+    assert all(
+        row["fitness"] == mean_fitness[row["genome_index"]]
+        for row in diagnostics
+    )
+
+
+def test_predator_population_diagnostics_are_empty():
+    trainer = create_trainer(species="predator")
+    genomes = trainer.create_initial_population()
+
+    fitness, diagnostics = trainer.evaluate_population(
+        genomes,
+        include_diagnostics=True,
+    )
+
+    assert fitness.shape == (len(genomes),)
+    assert np.all(np.isfinite(fitness))
+    assert diagnostics == []
+
+
+def test_population_diagnostics_are_reproducible():
+    trainer = create_trainer()
+    genomes = trainer.create_initial_population()
+
+    first_fitness, first_diagnostics = trainer.evaluate_population(
+        genomes,
+        include_diagnostics=True,
+    )
+    second_fitness, second_diagnostics = trainer.evaluate_population(
+        genomes,
+        include_diagnostics=True,
+    )
+
+    np.testing.assert_array_equal(first_fitness, second_fitness)
+    assert first_diagnostics == second_diagnostics
 
 
 def test_training_records_generations(monkeypatch):

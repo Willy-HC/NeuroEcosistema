@@ -10,6 +10,48 @@ from neuroecosistema.evolution.genetic_algorithm import GeneticAlgorithm
 from neuroecosistema.neural_network.network import NeuralNetwork
 
 
+def _average_prey_diagnostics(diagnostics_by_evaluation, fitness_values):
+    """Promedia diagnósticos por índice y conserva el fitness agregado."""
+
+    diagnostic_fields = (
+        "survival",
+        "food",
+        "exploration",
+        "stagnation",
+        "food_eaten",
+        "steps_survived",
+        "visited_regions",
+        "stagnation_steps",
+    )
+
+    indexed_diagnostics = [
+        {
+            diagnostic["genome_index"]: diagnostic
+            for diagnostic in evaluation
+        }
+        for evaluation in diagnostics_by_evaluation
+    ]
+
+    return [
+        {
+            "genome_index": genome_index,
+            **{
+                field: float(
+                    np.mean(
+                        [
+                            evaluation[genome_index][field]
+                            for evaluation in indexed_diagnostics
+                        ]
+                    )
+                )
+                for field in diagnostic_fields
+            },
+            "fitness": float(fitness_values[genome_index]),
+        }
+        for genome_index in range(len(fitness_values))
+    ]
+
+
 class EvolutionTrainer:
     """Entrena redes neuronales mediante neuroevolución."""
 
@@ -92,10 +134,11 @@ class EvolutionTrainer:
 
         return genomes
 
-    def evaluate_population(self, genomes):
+    def evaluate_population(self, genomes, include_diagnostics=False):
         """Calcula el fitness promedio usando varias semillas."""
 
         results = []
+        diagnostics_by_evaluation = []
 
         for seed in self.evaluation_seeds:
             evaluator = EpisodeEvaluator(
@@ -104,17 +147,39 @@ class EvolutionTrainer:
                 seed=seed,
             )
 
-            fitness = evaluator.evaluate(
-                genomes,
-                species=self.species,
-            )
+            if include_diagnostics:
+                fitness, diagnostics = evaluator.evaluate(
+                    genomes,
+                    species=self.species,
+                    include_diagnostics=True,
+                )
+                if self.species == "prey":
+                    diagnostics_by_evaluation.append(diagnostics)
+            else:
+                fitness = evaluator.evaluate(
+                    genomes,
+                    species=self.species,
+                )
 
             results.append(fitness)
 
-        return np.mean(
+        mean_fitness = np.mean(
             np.stack(results, axis=0),
             axis=0,
         )
+
+        if include_diagnostics:
+            diagnostics = (
+                _average_prey_diagnostics(
+                    diagnostics_by_evaluation,
+                    mean_fitness,
+                )
+                if self.species == "prey"
+                else []
+            )
+            return mean_fitness, diagnostics
+
+        return mean_fitness
 
     def train(self):
         """Ejecuta todas las generaciones de entrenamiento."""
