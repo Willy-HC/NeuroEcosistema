@@ -11,12 +11,12 @@ def normalize_value(value, maximum):
 
 
 
-def calculate_prey_fitness(
+def calculate_prey_fitness_components(
     prey,
     max_steps,
     food_target=5,
 ):
-    """Evalúa supervivencia, alimentación y exploración."""
+    """Calcula las contribuciones ponderadas del fitness de una presa."""
 
     survival_score = normalize_value(
         prey.steps_survived,
@@ -45,7 +45,27 @@ def calculate_prey_fitness(
         - 0.10 * stagnation_score
     )
 
-    return max(0.0, fitness)
+    return {
+        "survival": 0.25 * survival_score,
+        "food": 0.50 * food_score,
+        "exploration": 0.20 * exploration_score,
+        "stagnation": -0.10 * stagnation_score,
+        "fitness": max(0.0, fitness),
+    }
+
+
+def calculate_prey_fitness(
+    prey,
+    max_steps,
+    food_target=5,
+):
+    """Evalúa supervivencia, alimentación y exploración."""
+
+    return calculate_prey_fitness_components(
+        prey,
+        max_steps,
+        food_target,
+    )["fitness"]
 
 
 def calculate_predator_fitness(
