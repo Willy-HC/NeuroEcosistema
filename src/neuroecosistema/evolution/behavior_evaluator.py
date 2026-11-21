@@ -207,4 +207,7 @@ class BehaviorEvaluator:
             "mean_food_net_progress": average(
                 [agent.food_net_progress for agent in agents]
             ),
+            "mean_food_target_switches": average(
+                [agent.food_target_switches for agent in agents]
+            ),
         }

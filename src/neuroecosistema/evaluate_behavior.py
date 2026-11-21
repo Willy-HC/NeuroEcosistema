@@ -19,6 +19,7 @@ METRICS = (
     "mean_distance",
     "mean_food_approach_progress",
     "mean_food_net_progress",
+    "mean_food_target_switches",
 )
 
 def run_evaluations(
