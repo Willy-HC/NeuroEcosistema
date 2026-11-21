@@ -4,6 +4,7 @@ import numpy as np
 from neuroecosistema.evolution.fitness import (
     calculate_predator_fitness,
     calculate_prey_fitness,
+    calculate_prey_fitness_components,
 )
 from neuroecosistema.neural_network.network import NeuralNetwork
 from neuroecosistema.simulation.environment import Environment
@@ -38,7 +39,30 @@ class EpisodeEvaluator:
 
         return network
 
-    def evaluate(self, genomes, species="prey"):
+    @staticmethod
+    def _create_prey_diagnostic(prey, genome_index, max_steps):
+        """Resume el fitness y las métricas de una presa evaluada."""
+
+        components = calculate_prey_fitness_components(
+            prey,
+            max_steps,
+        )
+
+        return {
+            "genome_index": genome_index,
+            **components,
+            "food_eaten": prey.food_eaten,
+            "steps_survived": prey.steps_survived,
+            "visited_regions": len(prey.visited_regions),
+            "stagnation_steps": prey.stagnation_steps,
+        }
+
+    def evaluate(
+        self,
+        genomes,
+        species="prey",
+        include_diagnostics=False,
+    ):
         """Evalúa una población de genomas de una especie."""
 
         if species not in ("prey", "predator"):
@@ -111,20 +135,48 @@ class EpisodeEvaluator:
         # evaluated_agents conserva referencias a todos los
         # individuos originales, incluso si fueron eliminados
         # de las listas de agentes vivos.
+        diagnostics = []
         if species == "prey":
-            fitness_values = [
-                calculate_prey_fitness(agent, max_steps)
-                for agent in evaluated_agents
-            ]
+            if include_diagnostics:
+                diagnostics = [
+                    self._create_prey_diagnostic(
+                        agent,
+                        genome_index,
+                        max_steps,
+                    )
+                    for genome_index, agent in enumerate(
+                        evaluated_agents
+                    )
+                ]
+                fitness_values = [
+                    diagnostic["fitness"]
+                    for diagnostic in diagnostics
+                ]
+            else:
+                fitness_values = [
+                    calculate_prey_fitness(agent, max_steps)
+                    for agent in evaluated_agents
+                ]
         else:
             fitness_values = [
                 calculate_predator_fitness(agent, max_steps)
                 for agent in evaluated_agents
             ]
 
-        return np.asarray(fitness_values, dtype=np.float64)
+        fitness = np.asarray(fitness_values, dtype=np.float64)
 
-    def evaluate_both(self, prey_genomes, predator_genomes, rotation=0):
+        if include_diagnostics:
+            return fitness, diagnostics
+
+        return fitness
+
+    def evaluate_both(
+        self,
+        prey_genomes,
+        predator_genomes,
+        rotation=0,
+        include_diagnostics=False,
+    ):
         """Evalúa simultáneamente presas y depredadores neuronales."""
 
         if not prey_genomes or not predator_genomes:
@@ -198,11 +250,28 @@ class EpisodeEvaluator:
 
             environment.update_food()
 
-        prey_fitness = np.asarray(
-            [
+        diagnostics = []
+        if include_diagnostics:
+            diagnostics = [
+                self._create_prey_diagnostic(
+                    agent,
+                    genome_index,
+                    max_steps,
+                )
+                for genome_index, agent in enumerate(evaluated_prey)
+            ]
+            prey_fitness_values = [
+                diagnostic["fitness"]
+                for diagnostic in diagnostics
+            ]
+        else:
+            prey_fitness_values = [
                 calculate_prey_fitness(agent, max_steps)
                 for agent in evaluated_prey
-            ],
+            ]
+
+        prey_fitness = np.asarray(
+            prey_fitness_values,
             dtype=np.float64,
         )
 
@@ -218,5 +287,8 @@ class EpisodeEvaluator:
             predator_fitness[genome_index] = (
                 calculate_predator_fitness(agent, max_steps)
             )
+
+        if include_diagnostics:
+            return prey_fitness, predator_fitness, diagnostics
 
         return prey_fitness, predator_fitness

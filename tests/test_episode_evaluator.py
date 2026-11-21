@@ -52,6 +52,22 @@ def create_genomes(quantity=5):
     return genomes
 
 
+def create_evaluator(max_steps=100, seed=42):
+    simulation_config = {
+        **SIMULATION_CONFIG,
+        "simulation": {
+            **SIMULATION_CONFIG["simulation"],
+            "max_steps": max_steps,
+        },
+    }
+
+    return EpisodeEvaluator(
+        simulation_config,
+        NEURAL_CONFIG,
+        seed=seed,
+    )
+
+
 def test_episode_returns_fitness_for_every_genome():
     evaluator = EpisodeEvaluator(
         SIMULATION_CONFIG,
@@ -64,6 +80,27 @@ def test_episode_returns_fitness_for_every_genome():
     )
 
     assert fitness.shape == (5,)
+
+
+def test_evaluate_returns_numpy_array_by_default():
+    evaluator = create_evaluator()
+
+    result = evaluator.evaluate(create_genomes(3))
+
+    assert isinstance(result, np.ndarray)
+    assert result.shape == (3,)
+
+
+def test_evaluate_both_returns_two_arrays_by_default():
+    evaluator = create_evaluator()
+    genomes = create_genomes(3)
+
+    result = evaluator.evaluate_both(genomes, genomes)
+
+    assert isinstance(result, tuple)
+    assert len(result) == 2
+    assert all(isinstance(values, np.ndarray) for values in result)
+    assert all(values.shape == (3,) for values in result)
 
 
 def test_episode_fitness_is_finite():
@@ -102,6 +139,217 @@ def test_episode_is_reproducible():
         result_a,
         result_b,
     )
+
+
+@pytest.mark.parametrize("evaluate_both", [False, True])
+def test_diagnostics_are_reproducible(evaluate_both):
+    genomes = create_genomes(3)
+    evaluator_a = create_evaluator(seed=42)
+    evaluator_b = create_evaluator(seed=42)
+
+    if evaluate_both:
+        result_a = evaluator_a.evaluate_both(
+            genomes,
+            genomes,
+            include_diagnostics=True,
+        )
+        result_b = evaluator_b.evaluate_both(
+            genomes,
+            genomes,
+            include_diagnostics=True,
+        )
+        np.testing.assert_array_equal(result_a[0], result_b[0])
+        np.testing.assert_array_equal(result_a[1], result_b[1])
+        assert result_a[2] == result_b[2]
+    else:
+        fitness_a, diagnostics_a = evaluator_a.evaluate(
+            genomes,
+            include_diagnostics=True,
+        )
+        fitness_b, diagnostics_b = evaluator_b.evaluate(
+            genomes,
+            include_diagnostics=True,
+        )
+
+        np.testing.assert_array_equal(fitness_a, fitness_b)
+        assert diagnostics_a == diagnostics_b
+
+
+@pytest.mark.parametrize("evaluate_both", [False, True])
+def test_diagnostics_include_all_fields_and_match_fitness(
+    evaluate_both,
+):
+    evaluator = create_evaluator(max_steps=1)
+    genomes = create_genomes(3)
+
+    if evaluate_both:
+        prey_fitness, _, diagnostics = evaluator.evaluate_both(
+            genomes,
+            genomes,
+            include_diagnostics=True,
+        )
+    else:
+        prey_fitness, diagnostics = evaluator.evaluate(
+            genomes,
+            include_diagnostics=True,
+        )
+
+    expected_fields = {
+        "genome_index",
+        "survival",
+        "food",
+        "exploration",
+        "stagnation",
+        "fitness",
+        "food_eaten",
+        "steps_survived",
+        "visited_regions",
+        "stagnation_steps",
+    }
+
+    assert len(diagnostics) == len(genomes)
+
+    for genome_index, diagnostic in enumerate(diagnostics):
+        assert set(diagnostic) == expected_fields
+        assert diagnostic["genome_index"] == genome_index
+        assert diagnostic["fitness"] == prey_fitness[genome_index]
+
+
+@pytest.mark.parametrize("evaluate_both", [False, True])
+def test_diagnostics_keep_original_genome_indices_for_dead_prey(
+    monkeypatch,
+    evaluate_both,
+):
+    def set_prey_metrics(environment, movement_cost=0.1):
+        for genome_index, prey in enumerate(environment.prey):
+            prey.food_eaten = genome_index
+            prey.steps_survived = 10 * (genome_index + 1)
+            prey.visited_regions = {
+                (region, 0)
+                for region in range(genome_index + 3)
+            }
+            prey.stagnation_steps = genome_index
+
+            if genome_index == 1:
+                prey.alive = False
+
+        environment.prey = [
+            prey for prey in environment.prey if prey.alive
+        ]
+
+    monkeypatch.setattr(Environment, "update_agents", set_prey_metrics)
+    monkeypatch.setattr(
+        Environment,
+        "resolve_interactions",
+        lambda environment, capture_reward=30.0: None,
+    )
+
+    evaluator = create_evaluator(max_steps=1)
+    genomes = create_genomes(3)
+
+    if evaluate_both:
+        prey_fitness, _, diagnostics = evaluator.evaluate_both(
+            genomes,
+            genomes,
+            include_diagnostics=True,
+        )
+    else:
+        prey_fitness, diagnostics = evaluator.evaluate(
+            genomes,
+            include_diagnostics=True,
+        )
+
+    assert [row["genome_index"] for row in diagnostics] == [0, 1, 2]
+    assert [row["food_eaten"] for row in diagnostics] == [0, 1, 2]
+    assert [row["steps_survived"] for row in diagnostics] == [10, 20, 30]
+    assert [row["visited_regions"] for row in diagnostics] == [3, 4, 5]
+    assert [row["stagnation_steps"] for row in diagnostics] == [0, 1, 2]
+    assert [
+        row["fitness"] for row in diagnostics
+    ] == prey_fitness.tolist()
+
+
+@pytest.mark.parametrize("evaluate_both", [False, True])
+def test_diagnostics_do_not_change_fitness_vectors(evaluate_both):
+    evaluator = create_evaluator()
+    genomes = create_genomes(3)
+
+    if evaluate_both:
+        original_prey, original_predators = evaluator.evaluate_both(
+            genomes,
+            genomes,
+        )
+        diagnostic_prey, diagnostic_predators, _ = (
+            evaluator.evaluate_both(
+                genomes,
+                genomes,
+                include_diagnostics=True,
+            )
+        )
+        np.testing.assert_array_equal(original_prey, diagnostic_prey)
+        np.testing.assert_array_equal(
+            original_predators,
+            diagnostic_predators,
+        )
+    else:
+        original_fitness = evaluator.evaluate(genomes)
+        diagnostic_fitness, _ = evaluator.evaluate(
+            genomes,
+            include_diagnostics=True,
+        )
+        np.testing.assert_array_equal(
+            original_fitness,
+            diagnostic_fitness,
+        )
+
+
+@pytest.mark.parametrize("evaluate_both", [False, True])
+def test_diagnostics_do_not_run_extra_simulation_steps(
+    monkeypatch,
+    evaluate_both,
+):
+    update_calls = []
+
+    def count_updates(environment, movement_cost=0.1):
+        update_calls.append(1)
+
+    monkeypatch.setattr(Environment, "update_agents", count_updates)
+    monkeypatch.setattr(
+        Environment,
+        "resolve_interactions",
+        lambda environment, capture_reward=30.0: None,
+    )
+
+    evaluator = create_evaluator(max_steps=3)
+    genomes = create_genomes(2)
+
+    if evaluate_both:
+        evaluator.evaluate_both(
+            genomes,
+            genomes,
+            include_diagnostics=True,
+        )
+    else:
+        evaluator.evaluate(
+            genomes,
+            include_diagnostics=True,
+        )
+
+    assert len(update_calls) == 3
+
+
+def test_predator_evaluation_has_no_prey_genome_diagnostics():
+    evaluator = create_evaluator(max_steps=1)
+    genomes = create_genomes(2)
+
+    fitness, diagnostics = evaluator.evaluate(
+        genomes,
+        species="predator",
+        include_diagnostics=True,
+    )
+
+    assert fitness.shape == (2,)
+    assert diagnostics == []
 
 
 def test_episode_rejects_invalid_species():
