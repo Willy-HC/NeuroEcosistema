@@ -154,6 +154,54 @@ def test_trained_evaluation_is_reproducible(
     assert first == second
 
 
+def test_neural_prey_evaluation_without_predators_is_reproducible(
+    configs,
+    tmp_path,
+):
+    simulation, neural = configs
+    simulation["population"]["predators"] = 0
+    simulation["simulation"]["max_steps"] = 8
+
+    network = NeuralNetwork(
+        input_size=neural["input_size"],
+        hidden_layers=neural["hidden_layers"],
+        output_size=neural["output_size"],
+        hidden_activation=neural["activation_hidden"],
+        output_activation=neural["activation_output"],
+        seed=42,
+    )
+    prey_model = tmp_path / "best_prey.npz"
+    np.savez_compressed(
+        prey_model,
+        genome=network.get_genome(),
+    )
+    original_model = prey_model.read_bytes()
+
+    evaluator = BehaviorEvaluator(simulation, neural)
+    first = evaluator.evaluate(
+        seed=42,
+        model_dir=tmp_path,
+        strategy="neural",
+    )
+    second = evaluator.evaluate(
+        seed=42,
+        model_dir=tmp_path,
+        strategy="neural",
+    )
+
+    assert first == second
+    assert set(first) == {"prey"}
+    assert first["prey"]["agents"] == simulation["population"]["prey"]
+    assert first["prey"]["mean_food_eaten"] >= 0.0
+    assert first["prey"]["mean_captures"] == 0.0
+    assert (
+        first["prey"]["mean_survival"]
+        <= first["prey"]["steps_executed"]
+        <= simulation["simulation"]["max_steps"]
+    )
+    assert prey_model.read_bytes() == original_model
+
+
 def test_multiple_seeds_produce_two_rows_each(configs):
     simulation, neural = configs
 

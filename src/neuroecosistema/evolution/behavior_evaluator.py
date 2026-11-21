@@ -112,6 +112,9 @@ class BehaviorEvaluator:
             )
 
             for species, selected_strategy, agents, networks in models:
+                if not agents:
+                    continue
+
                 if selected_strategy != "neural":
                     networks.clear()
                     continue
@@ -147,20 +150,24 @@ class BehaviorEvaluator:
             environment.update_food()
             steps_executed += 1
 
-        return {
+        results = {
             "prey": self.summarize(
                 original_prey,
                 "prey",
                 seed,
                 steps_executed,
             ),
-            "predator": self.summarize(
+        }
+
+        if original_predators:
+            results["predator"] = self.summarize(
                 original_predators,
                 "predator",
                 seed,
                 steps_executed,
-            ),
-        }
+            )
+
+        return results
 
     @staticmethod
     def summarize(agents, species, seed, steps_executed):

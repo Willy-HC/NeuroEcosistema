@@ -48,6 +48,7 @@ def run_cli_with_mocked_evaluation(monkeypatch, args):
         ([], (50, 10)),
         (["--prey-count", "7"], (7, 10)),
         (["--predator-count", "4"], (50, 4)),
+        (["--predator-count", "0"], (50, 0)),
         (
             ["--prey-count", "7", "--predator-count", "4"],
             (7, 4),
@@ -123,7 +124,6 @@ def test_existing_cli_options_are_forwarded(
         ["--prey-count", "0"],
         ["--prey-count", "-1"],
         ["--prey-count", "many"],
-        ["--predator-count", "0"],
         ["--predator-count", "-1"],
         ["--predator-count", "many"],
     ],
@@ -210,3 +210,110 @@ def test_requested_populations_are_recorded_and_reproducible(
         ("predator", 3),
     ]
     assert all(row["seed"] == "42" for row in episode_rows[0])
+
+
+def test_zero_predators_export_only_prey_and_keep_csv_headers(
+    monkeypatch,
+    tmp_path,
+):
+    root = Path(__file__).resolve().parents[1]
+    simulation_yaml = root / "config" / "simulation.yaml"
+    original_yaml = simulation_yaml.read_bytes()
+    output_dirs = (
+        tmp_path / "first",
+        tmp_path / "second",
+    )
+    saved_results = []
+
+    for output_dir in output_dirs:
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "evaluate_behavior",
+                "--prey-count",
+                "2",
+                "--predator-count",
+                "0",
+                "--strategy",
+                "random",
+                "--seeds",
+                "1001",
+                "--max-steps",
+                "2",
+                "--output",
+                str(output_dir),
+            ],
+        )
+
+        evaluate_behavior.main()
+
+        episode_path = output_dir / "behavior_episodes.csv"
+        summary_path = output_dir / "behavior_summary.csv"
+
+        with episode_path.open(
+            newline="",
+            encoding="utf-8",
+        ) as file:
+            episode_reader = csv.DictReader(file)
+            episode_rows = list(episode_reader)
+            assert episode_reader.fieldnames == [
+                "seed",
+                "species",
+                "agents",
+                "steps_executed",
+                "mean_survival",
+                "mean_food_eaten",
+                "mean_captures",
+                "mean_exploration",
+                "mean_wall_ratio",
+                "mean_distance",
+                "mean_food_approach_progress",
+                "mean_food_net_progress",
+                "mean_food_target_switches",
+            ]
+
+        with summary_path.open(
+            newline="",
+            encoding="utf-8",
+        ) as file:
+            summary_reader = csv.DictReader(file)
+            summary_rows = list(summary_reader)
+            assert summary_reader.fieldnames == [
+                "species",
+                "episodes",
+                "mean_survival",
+                "std_mean_survival",
+                "mean_food_eaten",
+                "std_mean_food_eaten",
+                "mean_captures",
+                "std_mean_captures",
+                "mean_exploration",
+                "std_mean_exploration",
+                "mean_wall_ratio",
+                "std_mean_wall_ratio",
+                "mean_distance",
+                "std_mean_distance",
+                "mean_food_approach_progress",
+                "std_mean_food_approach_progress",
+                "mean_food_net_progress",
+                "std_mean_food_net_progress",
+                "mean_food_target_switches",
+                "std_mean_food_target_switches",
+            ]
+
+        assert len(episode_rows) == 1
+        assert episode_rows[0]["species"] == "prey"
+        assert episode_rows[0]["agents"] == "2"
+        assert len(summary_rows) == 1
+        assert summary_rows[0]["species"] == "prey"
+        assert summary_rows[0]["episodes"] == "1"
+        assert all(
+            value.lower() != "nan"
+            for row in episode_rows + summary_rows
+            for value in row.values()
+        )
+        saved_results.append((episode_rows, summary_rows))
+
+    assert saved_results[0] == saved_results[1]
+    assert simulation_yaml.read_bytes() == original_yaml

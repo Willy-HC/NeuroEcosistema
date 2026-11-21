@@ -55,7 +55,8 @@ def run_evaluations(
         )
 
         for species in ("prey", "predator"):
-            results.append(episode[species])
+            if species in episode:
+                results.append(episode[species])
 
         print(f"Evaluación completada: semilla {seed}")
 
@@ -194,10 +195,9 @@ def main():
     if args.prey_count is not None and args.prey_count < 1:
         parser.error("--prey-count debe ser positivo")
 
-    if args.predator_count is not None and args.predator_count < 1:
+    if args.predator_count is not None and args.predator_count < 0:
         parser.error(
-            "--predator-count debe ser positivo; "
-            "el evaluador no admite poblaciones vacías"
+            "--predator-count no puede ser negativo"
         )
 
     simulation, neural, _ = load_configs()
