@@ -158,6 +158,20 @@ def main():
     )
 
     parser.add_argument(
+        "--prey-count",
+        type=int,
+        default=None,
+        help="Cantidad de presas; por defecto usa simulation.yaml.",
+    )
+
+    parser.add_argument(
+        "--predator-count",
+        type=int,
+        default=None,
+        help="Cantidad de depredadores; por defecto usa simulation.yaml.",
+    )
+
+    parser.add_argument(
         "--output",
         default="results/behavior",
     )
@@ -177,7 +191,24 @@ def main():
 
     args = parser.parse_args()
 
+    if args.prey_count is not None and args.prey_count < 1:
+        parser.error("--prey-count debe ser positivo")
+
+    if args.predator_count is not None and args.predator_count < 1:
+        parser.error(
+            "--predator-count debe ser positivo; "
+            "el evaluador no admite poblaciones vacías"
+        )
+
     simulation, neural, _ = load_configs()
+
+    if args.prey_count is not None:
+        simulation["population"]["prey"] = args.prey_count
+
+    if args.predator_count is not None:
+        simulation["population"]["predators"] = (
+            args.predator_count
+        )
 
     if args.max_steps is not None:
         if args.max_steps < 1:
