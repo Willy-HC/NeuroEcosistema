@@ -10,29 +10,55 @@ class Renderer:
     PLANT_COLOR = (90, 190, 90)
     PLANT_CENTER_COLOR = (150, 220, 100)
 
-    def __init__(self, screen: pygame.Surface) -> None:
+    def __init__(
+        self,
+        screen: pygame.Surface,
+        viewport: pygame.Rect | None = None,
+    ) -> None:
         self.screen = screen
+        self.viewport = viewport or screen.get_rect()
+
+    def _position(
+        self,
+        environment: Environment,
+        x: float,
+        y: float,
+    ) -> tuple[int, int]:
+        scale_x = self.viewport.width / environment.width
+        scale_y = self.viewport.height / environment.height
+        return (
+            self.viewport.x + round(x * scale_x),
+            self.viewport.y + round(y * scale_y),
+        )
+
+    def _radius(self, environment: Environment, radius: int) -> int:
+        scale = min(
+            self.viewport.width / environment.width,
+            self.viewport.height / environment.height,
+        )
+        return max(1, round(radius * scale))
 
     def draw_environment(self, environment: Environment) -> None:
         """Dibuja el fondo y las plantas del entorno."""
 
-        self.screen.fill(self.BACKGROUND_COLOR)
+        self.screen.fill(self.BACKGROUND_COLOR, self.viewport)
 
         for plant in environment.plants:
-            position = (int(plant.x), int(plant.y))
+            position = self._position(environment, plant.x, plant.y)
+            radius = self._radius(environment, plant.radius)
 
             pygame.draw.circle(
                 self.screen,
                 self.PLANT_COLOR,
                 position,
-                plant.radius,
+                radius,
             )
 
             pygame.draw.circle(
                 self.screen,
                 self.PLANT_CENTER_COLOR,
                 position,
-                2,
+                self._radius(environment, 2),
             )
 
     def draw_agents(self, environment: Environment) -> None:
@@ -42,16 +68,16 @@ class Renderer:
             pygame.draw.circle(
                 self.screen,
                 agent.color,
-                (int(agent.x), int(agent.y)),
-                agent.radius,
+                self._position(environment, agent.x, agent.y),
+                self._radius(environment, agent.radius),
             )
 
         for agent in environment.predators:
             pygame.draw.circle(
                 self.screen,
                 agent.color,
-                (int(agent.x), int(agent.y)),
-                agent.radius,
+                self._position(environment, agent.x, agent.y),
+                self._radius(environment, agent.radius),
             )
 
     def draw_statistics(self, environment: Environment) -> None:

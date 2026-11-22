@@ -1,5 +1,34 @@
 # NeuroEcosistema
 
+## Interfaz de simulación
+
+Inicia la interfaz gráfica desde la raíz del proyecto:
+
+```powershell
+uv run python -m neuroecosistema.main
+```
+
+Para asignar los modelos entrenados a las poblaciones iniciales, agrega
+`--trained`; si están en otra carpeta, indica `--model-dir`.
+
+La pantalla de configuración permite ajustar las poblaciones, plantas,
+regeneración, límite de plantas, semilla y el estabilizador experimental.
+Los controles tienen rangos acotados para mantener la simulación manejable.
+En la simulación, la barra superior permite pausar/reanudar, reiniciar, abrir
+la configuración, consultar estadísticas y salir. Al reiniciar se puede
+conservar la configuración o modificarla. Cada ejecución nueva crea agentes,
+redes, contadores e historial desde cero; una semilla y condiciones iguales
+reproducen las mismas posiciones y redes iniciales.
+
+La pantalla de resultados conserva las métricas de la última ejecución hasta
+que se inicia otra. Las gráficas por paso muestran población, plantas,
+capturas, alimento consumido y energía media. Si la carpeta de modelos
+contiene `history_prey.csv` o `history_predator.csv`, se muestran las métricas
+por **generación**; `imitation_history.csv` se muestra por **época**. No se
+confunden esos índices con los pasos de la simulación. Desde estadísticas se
+pueden exportar la ejecución a CSV y la gráfica visible a PNG en
+`results/simulation_exports/`.
+
 ## Sonda de orientación neuronal hacia alimento
 
 Ejecuta una prueba determinista de orientación de las presas con tres

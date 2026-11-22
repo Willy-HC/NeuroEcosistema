@@ -2,6 +2,7 @@ import math
 import random
 from dataclasses import dataclass
 
+from neuroecosistema.agents.direction_stabilizer import limit_turn
 from neuroecosistema.agents.heuristic_controller import (
     calculate_heuristic_direction,
 )
@@ -26,7 +27,6 @@ class Plant:
 class Environment:
     """Administra el mundo, sus recursos y sus organismos."""
 
-
     def __init__(
         self,
         width: int,
@@ -36,6 +36,7 @@ class Environment:
         food_energy: float = 20.0,
         food_respawn: int = 0,
         max_food: int | None = None,
+        predator_max_turn_degrees: float | None = None,
     ) -> None:
         if initial_food < 0:
             raise ValueError(
@@ -61,9 +62,19 @@ class Environment:
         self.plants: list[Plant] = []
         self.prey: list[Prey] = []
         self.predators: list[Predator] = []
-
         self.prey_networks = {}
         self.predator_networks = {}
+        self.predator_previous_directions = {}
+
+        if predator_max_turn_degrees is not None and (
+            not math.isfinite(predator_max_turn_degrees)
+            or not 0 < predator_max_turn_degrees <= 180
+        ):
+            raise ValueError(
+                "El limite de giro debe estar entre 0 y 180 grados."
+            )
+
+        self.predator_max_turn_degrees = predator_max_turn_degrees
 
         self.total_food_consumed = 0
         self.total_captures = 0
@@ -257,7 +268,34 @@ class Environment:
                     if network is not None
                     else None
                 )
-
+            # Estabilizacion experimental exclusiva de depredadores
+            # controlados mediante una red neuronal.
+            stabilization_enabled = (
+                self.predator_max_turn_degrees is not None
+                and network is not None
+                and predator_strategy in ("auto", "neural")
+            )
+            if stabilization_enabled and direction is not None:
+                predator_id = id(predator)
+                previous_direction = (
+                    self.predator_previous_directions.get(predator_id)
+                )
+                direction = limit_turn(
+                    previous_direction,
+                    direction,
+                    self.predator_max_turn_degrees,
+                )
+                # Guardar solamente direcciones validas y no nulas.
+                if math.hypot(*direction) > 1e-8:
+                    self.predator_previous_directions[predator_id] = (
+                        direction
+                    )
+            else:
+                # No reutilizar historial de otros modos de movimiento.
+                self.predator_previous_directions.pop(
+                    id(predator),
+                    None,
+                )
             decisions.append((predator, direction))
 
         # Registrar objetivos antes del movimiento.
@@ -356,12 +394,19 @@ class Environment:
             if agent_id in active_prey_ids
         }
 
+        # Eliminar direcciones de depredadores que ya no existen.
+        self.predator_previous_directions = {
+            agent_id: direction
+            for agent_id, direction
+            in self.predator_previous_directions.items()
+            if agent_id in active_predator_ids
+        }
+
         self.predator_networks = {
             agent_id: network
             for agent_id, network in self.predator_networks.items()
             if agent_id in active_predator_ids
         }
-
 
     def update_food(self) -> None:
         """Repone una planta cada cierto número de pasos."""
@@ -450,6 +495,7 @@ class Environment:
 
         self.prey_networks = {}
         self.predator_networks = {}
+        self.predator_previous_directions.clear()
 
         for prey in self.prey:
             network = NeuralNetwork(
