@@ -75,8 +75,9 @@ class FoodOrientationObserver:
 
             tracker.observe(id(target), distance)
 
+    
     def after_interactions(self, evaluated_prey):
-        """Clasifica desapariciones, consumos y muertes."""
+        """Clasifica consumos, desapariciones y muertes."""
 
         active_plants = {
             id(plant)
@@ -84,8 +85,7 @@ class FoodOrientationObserver:
         }
 
         for prey in evaluated_prey:
-            prey_id = id(prey)
-            tracker = self.trackers.get(prey_id)
+            tracker = self.trackers.get(id(prey))
 
             if (
                 tracker is None
@@ -96,8 +96,7 @@ class FoodOrientationObserver:
 
             target_id = tracker.target_id
 
-            # Una planta consumida por la propia presa queda
-            # identificada en sus referencias existentes.
+            
             reference = prey.food_progress_references.get(
                 target_id
             )
@@ -109,7 +108,9 @@ class FoodOrientationObserver:
                 tracker.close("self_consumed")
 
             elif target_id not in active_plants:
-                tracker.close("other_consumed")
+                # La ausencia por sí sola no demuestra
+                # que otra presa haya consumido la planta.
+                tracker.close("disappeared")
 
             elif not prey.alive:
                 tracker.close("prey_dead")
