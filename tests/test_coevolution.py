@@ -124,6 +124,110 @@ def test_joint_evaluation_returns_two_fitness_arrays(configs):
     assert np.all(np.isfinite(predator_fitness))
 
 
+def test_historical_opponents_blend_into_species_fitness(
+    configs,
+    monkeypatch,
+):
+    trainer = create_trainer(configs)
+    prey_genomes = trainer.prey_trainer.create_initial_population()
+    predator_genomes = trainer.predator_trainer.create_initial_population()
+    trainer.prey_hall_of_fame = [np.zeros_like(prey_genomes[0])]
+    trainer.predator_hall_of_fame = [
+        np.zeros_like(predator_genomes[0])
+    ]
+    calls = []
+
+    def fake_evaluate_both(
+        evaluator,
+        evaluated_prey,
+        evaluated_predators,
+        rotation=0,
+        include_diagnostics=False,
+    ):
+        historical_prey = np.all(evaluated_prey[0] == 0.0)
+        historical_predators = np.all(
+            evaluated_predators[0] == 0.0
+        )
+        calls.append(
+            (evaluator.seed, historical_prey, historical_predators)
+        )
+        if historical_prey:
+            prey_fitness = np.full(4, 0.1)
+            predator_fitness = np.full(4, 0.7)
+        elif historical_predators:
+            prey_fitness = np.full(4, 0.4)
+            predator_fitness = np.full(4, 0.1)
+        else:
+            prey_fitness = np.full(4, 0.6)
+            predator_fitness = np.full(4, 0.8)
+        if include_diagnostics:
+            return (
+                prey_fitness,
+                predator_fitness,
+                make_diagnostics(prey_fitness, rotation),
+            )
+        return prey_fitness, predator_fitness
+
+    monkeypatch.setattr(
+        EpisodeEvaluator,
+        "evaluate_both",
+        fake_evaluate_both,
+    )
+
+    prey_fitness, predator_fitness = trainer.evaluate_populations(
+        prey_genomes,
+        predator_genomes,
+        generation=0,
+    )
+
+    np.testing.assert_allclose(prey_fitness, 0.56)
+    np.testing.assert_allclose(predator_fitness, 0.78)
+    assert calls == [
+        (42, False, False),
+        (42, False, True),
+        (42, True, False),
+        (123, False, False),
+    ]
+
+
+def test_hall_of_fame_keeps_unique_recent_champions(configs):
+    trainer = create_trainer(configs)
+    genomes = [
+        np.full(4, float(index))
+        for index in range(4)
+    ]
+    archive = []
+
+    trainer._remember_champion(
+        archive,
+        genomes,
+        np.array([0.1, 0.4, 0.2, 0.3]),
+        maximum_size=2,
+    )
+    trainer._remember_champion(
+        archive,
+        genomes,
+        np.array([0.1, 0.2, 0.5, 0.3]),
+        maximum_size=2,
+    )
+    trainer._remember_champion(
+        archive,
+        genomes,
+        np.array([0.1, 0.2, 0.3, 0.5]),
+        maximum_size=2,
+    )
+    trainer._remember_champion(
+        archive,
+        genomes,
+        np.array([0.1, 0.2, 0.3, 0.5]),
+        maximum_size=2,
+    )
+
+    assert len(archive) == 2
+    np.testing.assert_array_equal(archive[0], genomes[2])
+    np.testing.assert_array_equal(archive[1], genomes[3])
+
+
 def test_joint_diagnostics_average_per_genome_and_rotation(
     configs,
     monkeypatch,
@@ -525,6 +629,9 @@ def test_coevolution_exports_evaluated_prey_diagnostics(
         2
         * diagnostic_trainer.generations
         * len(diagnostic_trainer.evaluation_seeds)
+    )
+    expected_episode_calls += (
+        2 * 2 * (diagnostic_trainer.generations - 1)
     )
     assert len(episode_calls) == expected_episode_calls
     assert len(

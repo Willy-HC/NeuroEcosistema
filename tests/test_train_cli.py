@@ -133,6 +133,12 @@ def test_cli_passes_diagnostics_option_to_coevolution_trainer(
             evolution_config,
             fitness_mode="baseline",
             food_progress_weight=0.05,
+            pretrained_prey_path=None,
+            pretrained_predator_path=None,
+            pretrained_fraction=0.5,
+            pretrained_noise=0.02,
+            hall_of_fame_size=3,
+            historical_opponent_weight=0.2,
         ):
             self.prey_trainer = SimpleNamespace(
                 best_fitness=0.5,
@@ -200,9 +206,20 @@ def test_cli_passes_food_progress_options_to_prey_trainer(
             species="prey",
             fitness_mode="baseline",
             food_progress_weight=0.05,
+            pretrained_model_path=None,
+            pretrained_fraction=0.5,
+            pretrained_noise=0.02,
         ):
             calls.append(
                 ("configure", species, fitness_mode, food_progress_weight)
+            )
+            calls.append(
+                (
+                    "pretrained",
+                    pretrained_model_path,
+                    pretrained_fraction,
+                    pretrained_noise,
+                )
             )
             self.best_fitness = 0.5
             self.best_generation = 1
@@ -240,6 +257,7 @@ def test_cli_passes_food_progress_options_to_prey_trainer(
 
     assert calls == [
         ("configure", "prey", "food_progress", 0.2),
+        ("pretrained", None, 0.5, 0.02),
         ("train",),
     ]
 

@@ -3,6 +3,9 @@ from pathlib import Path
 
 import numpy as np
 
+from neuroecosistema.analysis.food_orientation_observer import (
+    FoodOrientationObserver,
+)
 from neuroecosistema.neural_network.model_loader import (
     load_trained_network,
 )
@@ -23,6 +26,8 @@ class BehaviorEvaluator:
         strategy=None,
         prey_strategy=None,
         predator_strategy=None,
+        observe_food_orientation=False,
+        observe_tactical_progress=False,
     ):
         """Evalúa un episodio con estrategias independientes."""
 
@@ -132,10 +137,81 @@ class BehaviorEvaluator:
                     networks[id(agent)].set_genome(genome)
 
         steps_executed = 0
+        prey_by_id = {id(prey): prey for prey in original_prey}
+        predator_by_id = {
+            id(predator): predator
+            for predator in original_predators
+        }
+        evasion_distance = {
+            id(prey): 0.0 for prey in original_prey
+        }
+        threat_steps = {
+            id(prey): 0 for prey in original_prey
+        }
+        pursuit_distance = {
+            id(predator): 0.0
+            for predator in original_predators
+        }
+        pursuit_steps = {
+            id(predator): 0
+            for predator in original_predators
+        }
+        threat_radius = 180.0
+
+        observer = (
+            FoodOrientationObserver(environment)
+            if observe_food_orientation
+            else None
+        )
 
         for _ in range(simulation["max_steps"]):
             if not environment.prey and not environment.predators:
                 break
+
+            prey_threats = {}
+            predator_targets = {}
+            if observe_tactical_progress:
+                for prey in environment.prey:
+                    if not environment.predators:
+                        continue
+                    threat = min(
+                        environment.predators,
+                        key=lambda predator: np.hypot(
+                            prey.x - predator.x,
+                            prey.y - predator.y,
+                        ),
+                    )
+                    distance = float(
+                        np.hypot(prey.x - threat.x, prey.y - threat.y)
+                    )
+                    if distance <= threat_radius:
+                        prey_threats[id(prey)] = (
+                            threat.x,
+                            threat.y,
+                            distance,
+                        )
+
+                for predator in environment.predators:
+                    if not environment.prey:
+                        continue
+                    target = min(
+                        environment.prey,
+                        key=lambda prey: np.hypot(
+                            predator.x - prey.x,
+                            predator.y - prey.y,
+                        ),
+                    )
+                    distance = float(
+                        np.hypot(
+                            predator.x - target.x,
+                            predator.y - target.y,
+                        )
+                    )
+                    predator_targets[id(predator)] = (
+                        target.x,
+                        target.y,
+                        distance,
+                    )
 
             environment.update_agents(
                 movement_cost=energy["movement_cost"],
@@ -143,29 +219,91 @@ class BehaviorEvaluator:
                 predator_strategy=predator_strategy,
             )
 
+            for prey_id, (target_x, target_y, before) in (
+                prey_threats.items()
+            ):
+                prey = prey_by_id[prey_id]
+                after = float(
+                    np.hypot(prey.x - target_x, prey.y - target_y)
+                )
+                evasion_distance[prey_id] += max(
+                    0.0,
+                    after - before,
+                )
+                threat_steps[prey_id] += 1
+
+            for predator_id, (target_x, target_y, before) in (
+                predator_targets.items()
+            ):
+                predator = predator_by_id[predator_id]
+                after = float(
+                    np.hypot(
+                        predator.x - target_x,
+                        predator.y - target_y,
+                    )
+                )
+                pursuit_distance[predator_id] += max(
+                    0.0,
+                    before - after,
+                )
+                pursuit_steps[predator_id] += 1
+
+            if observer is not None:
+                observer.after_movement(original_prey)
+
             environment.resolve_interactions(
                 capture_reward=energy["capture_reward"]
             )
 
+            if observer is not None:
+                observer.after_interactions(original_prey)
+
             environment.update_food()
             steps_executed += 1
 
-        results = {
-            "prey": self.summarize(
-                original_prey,
-                "prey",
-                seed,
-                steps_executed,
-            ),
-        }
+        prey_summary = self.summarize(
+            original_prey,
+            "prey",
+            seed,
+            steps_executed,
+        )
+        results = {"prey": prey_summary}
+        if observe_tactical_progress:
+            prey_summary.update({
+                "mean_food_progress_score": float(
+                    np.mean(
+                        [prey.food_progress_score for prey in original_prey]
+                    )
+                ),
+                "mean_evasion_distance": float(
+                    np.mean(list(evasion_distance.values()))
+                ),
+                "mean_threat_steps": float(
+                    np.mean(list(threat_steps.values()))
+                ),
+            })
 
         if original_predators:
-            results["predator"] = self.summarize(
+            predator_summary = self.summarize(
                 original_predators,
                 "predator",
                 seed,
                 steps_executed,
             )
+            if observe_tactical_progress:
+                predator_summary.update({
+                    "mean_pursuit_distance": float(
+                        np.mean(list(pursuit_distance.values()))
+                    ),
+                    "mean_pursuit_steps": float(
+                        np.mean(list(pursuit_steps.values()))
+                    ),
+                })
+            results["predator"] = predator_summary
+
+        if observer is not None:
+            observer.finish()
+            results["food_orientation"] = observer.results()
 
         return results
 

@@ -101,6 +101,34 @@ def test_behavior_metrics_are_finite(configs):
             assert np.isfinite(row[key])
 
 
+def test_tactical_metrics_cover_evasion_pursuit_and_food(configs):
+    simulation, neural = configs
+    simulation["simulation"]["max_steps"] = 8
+    evaluator = BehaviorEvaluator(simulation, neural)
+
+    result = evaluator.evaluate(
+        seed=42,
+        strategy="heuristic",
+        observe_tactical_progress=True,
+        observe_food_orientation=True,
+    )
+
+    prey = result["prey"]
+    predator = result["predator"]
+    for key in (
+        "mean_food_progress_score",
+        "mean_evasion_distance",
+        "mean_threat_steps",
+        "mean_food_approach_progress",
+    ):
+        assert np.isfinite(prey[key])
+    for key in ("mean_pursuit_distance", "mean_pursuit_steps"):
+        assert np.isfinite(predator[key])
+    assert prey["mean_food_progress_score"] >= 0.0
+    assert prey["mean_evasion_distance"] >= 0.0
+    assert predator["mean_pursuit_distance"] >= 0.0
+
+
 def test_wall_ratio_is_between_zero_and_one(configs):
     simulation, neural = configs
     evaluator = BehaviorEvaluator(simulation, neural)

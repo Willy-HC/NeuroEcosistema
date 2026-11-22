@@ -1,4 +1,3 @@
-
 import math
 
 from neuroecosistema.analysis.food_orientation_tracker import (
@@ -23,13 +22,9 @@ class FoodOrientationObserver:
             raise ValueError("La diagonal del mapa debe ser positiva.")
 
         for prey in environment.prey:
-            target = environment.nearest_plant(
-                prey, environment.plants
-            )
+            target = environment.nearest_plant(prey, environment.plants)
 
-            tracker = FoodOrientationTracker(
-                map_diagonal=diagonal
-            )
+            tracker = FoodOrientationTracker(map_diagonal=diagonal)
 
             prey_id = id(prey)
             self.trackers[prey_id] = tracker
@@ -46,10 +41,13 @@ class FoodOrientationObserver:
             tracker.start(target_id, distance)
             self.targets[prey_id] = target
 
-    def after_movement(self):
-        """Observa posiciones después de mover los agentes."""
+    def after_movement(self, evaluated_prey=None):
+        """Registra el movimiento, incluso de presas recién eliminadas."""
 
-        for prey in self.environment.prey:
+        if evaluated_prey is None:
+            evaluated_prey = self.environment.prey
+
+        for prey in evaluated_prey:
             prey_id = id(prey)
             tracker = self.trackers.get(prey_id)
             target = self.targets.get(prey_id)
@@ -60,12 +58,9 @@ class FoodOrientationObserver:
             if tracker.is_closed:
                 continue
 
-            # La referencia debe seguir siendo una planta activa.
-            if not any(
-                plant is target
-                for plant in self.environment.plants
-            ):
-                tracker.close("disappeared")
+            # Dejar la clasificación de desapariciones
+            # para after_interactions().
+            if not any(plant is target for plant in self.environment.plants):
                 continue
 
             distance = math.dist(
@@ -75,42 +70,26 @@ class FoodOrientationObserver:
 
             tracker.observe(id(target), distance)
 
-    
     def after_interactions(self, evaluated_prey):
         """Clasifica consumos, desapariciones y muertes."""
 
-        active_plants = {
-            id(plant)
-            for plant in self.environment.plants
-        }
+        active_plants = {id(plant) for plant in self.environment.plants}
 
         for prey in evaluated_prey:
             tracker = self.trackers.get(id(prey))
 
-            if (
-                tracker is None
-                or tracker.target_id is None
-                or tracker.is_closed
-            ):
+            if tracker is None or tracker.target_id is None or tracker.is_closed:
                 continue
 
             target_id = tracker.target_id
 
-            
-            reference = prey.food_progress_references.get(
-                target_id
-            )
+            reference = prey.food_progress_references.get(target_id)
 
-            if (
-                reference is not None
-                and reference.status == "consumed"
-            ):
+            if reference is not None and reference.status == "consumed":
                 tracker.close("self_consumed")
 
             elif target_id not in active_plants:
-                if self._consumed_by_other(
-                    target_id, prey, evaluated_prey
-                ):
+                if self._consumed_by_other(target_id, prey, evaluated_prey):
                     tracker.close("other_consumed")
                 else:
                     tracker.close("disappeared")
@@ -138,7 +117,7 @@ class FoodOrientationObserver:
             }
             for prey_id, tracker in self.trackers.items()
         }
-    
+
     @staticmethod
     def _consumed_by_other(target_id, prey, evaluated_prey):
         """Comprueba si otra presa consumió la planta objetivo."""
@@ -146,14 +125,9 @@ class FoodOrientationObserver:
             if other is prey:
                 continue
 
-            reference = other.food_progress_references.get(
-                target_id
-            )
+            reference = other.food_progress_references.get(target_id)
 
-            if (
-                reference is not None
-                and reference.status == "consumed"
-            ):
+            if reference is not None and reference.status == "consumed":
                 return True
 
         return False

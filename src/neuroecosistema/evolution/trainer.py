@@ -1,6 +1,7 @@
 
 import csv
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -8,6 +9,7 @@ import numpy as np
 from neuroecosistema.evolution.episode_evaluator import EpisodeEvaluator
 from neuroecosistema.evolution.fitness import validate_fitness_options
 from neuroecosistema.evolution.genetic_algorithm import GeneticAlgorithm
+from neuroecosistema.neural_network.model_loader import load_trained_network
 from neuroecosistema.neural_network.network import NeuralNetwork
 
 
@@ -67,6 +69,9 @@ class EvolutionTrainer:
         evaluation_seeds=(42, 123, 456),
         fitness_mode="baseline",
         food_progress_weight=0.05,
+        pretrained_model_path=None,
+        pretrained_fraction=0.5,
+        pretrained_noise=0.02,
     ):
         if species not in ("prey", "predator"):
             raise ValueError("Especie no válida.")
@@ -93,12 +98,41 @@ class EvolutionTrainer:
             raise ValueError(
                 "Las semillas de evaluación deben ser diferentes."
             )
+        if (
+            not math.isfinite(pretrained_fraction)
+            or not 0.0 <= pretrained_fraction < 1.0
+        ):
+            raise ValueError(
+                "La fracción preentrenada debe estar en [0, 1)."
+            )
+        if (
+            not math.isfinite(pretrained_noise)
+            or pretrained_noise < 0.0
+        ):
+            raise ValueError(
+                "El ruido inicial debe ser finito y no negativo."
+            )
+        if (
+            pretrained_model_path is not None
+            and not Path(pretrained_model_path).is_file()
+        ):
+            raise FileNotFoundError(
+                f"No se encontró el modelo preentrenado: "
+                f"{pretrained_model_path}"
+            )
 
         self.simulation_config = simulation_config
         self.neural_config = neural_config
         self.config = evolution_config
         self.species = species
         self.evaluation_seeds = tuple(evaluation_seeds)
+        self.pretrained_model_path = (
+            str(pretrained_model_path)
+            if pretrained_model_path is not None
+            else None
+        )
+        self.pretrained_fraction = float(pretrained_fraction)
+        self.pretrained_noise = float(pretrained_noise)
 
         self.generations = int(self.config["generations"])
 
@@ -134,7 +168,36 @@ class EvolutionTrainer:
 
         genomes = []
 
-        for _ in range(self.algorithm.population_size):
+        population_size = self.algorithm.population_size
+        pretrained_count = 0
+        if self.pretrained_model_path is not None:
+            pretrained_count = min(
+                population_size - 1,
+                math.floor(
+                    population_size * self.pretrained_fraction
+                    + 0.5
+                ),
+            )
+
+        if pretrained_count:
+            pretrained_network = load_trained_network(
+                self.pretrained_model_path,
+                self.neural_config,
+            )
+            pretrained_genome = pretrained_network.get_genome()
+            genomes.append(pretrained_genome.copy())
+
+            for _ in range(1, pretrained_count):
+                genomes.append(
+                    pretrained_genome
+                    + self.rng.normal(
+                        0.0,
+                        self.pretrained_noise,
+                        size=pretrained_genome.shape,
+                    )
+                )
+
+        for _ in range(population_size - pretrained_count):
             network = NeuralNetwork(
                 input_size=self.neural_config["input_size"],
                 hidden_layers=self.neural_config["hidden_layers"],
@@ -288,6 +351,9 @@ class EvolutionTrainer:
             "evaluation_seeds": list(self.evaluation_seeds),
             "fitness_mode": self.fitness_mode,
             "food_progress_weight": self.food_progress_weight,
+            "pretrained_model_path": self.pretrained_model_path,
+            "pretrained_fraction": self.pretrained_fraction,
+            "pretrained_noise": self.pretrained_noise,
             "neural_config": self.neural_config,
             "evolution_config": self.config,
             "simulation_config": self.simulation_config,

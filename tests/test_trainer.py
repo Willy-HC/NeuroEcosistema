@@ -6,6 +6,7 @@ import pytest
 
 from neuroecosistema.evolution.episode_evaluator import EpisodeEvaluator
 from neuroecosistema.evolution.trainer import EvolutionTrainer
+from neuroecosistema.neural_network.network import NeuralNetwork
 
 SIMULATION_CONFIG = {
     "simulation": {
@@ -51,6 +52,9 @@ def create_trainer(
     species="prey",
     fitness_mode="baseline",
     food_progress_weight=0.05,
+    pretrained_model_path=None,
+    pretrained_fraction=0.5,
+    pretrained_noise=0.02,
 ):
     return EvolutionTrainer(
         SIMULATION_CONFIG,
@@ -60,6 +64,9 @@ def create_trainer(
         evaluation_seeds=(42, 123),
         fitness_mode=fitness_mode,
         food_progress_weight=food_progress_weight,
+        pretrained_model_path=pretrained_model_path,
+        pretrained_fraction=pretrained_fraction,
+        pretrained_noise=pretrained_noise,
     )
 
 
@@ -112,6 +119,52 @@ def test_initial_genomes_are_different():
     genomes = trainer.create_initial_population()
 
     assert not np.array_equal(genomes[0], genomes[1])
+
+
+def test_pretrained_population_keeps_random_diversity_and_is_reproducible(
+    tmp_path,
+):
+    seed_network = NeuralNetwork(
+        input_size=8,
+        hidden_layers=[16, 12],
+        output_size=2,
+        seed=6,
+    )
+    model_path = tmp_path / "best_prey.npz"
+    np.savez_compressed(model_path, genome=seed_network.get_genome())
+    options = {
+        "pretrained_model_path": model_path,
+        "pretrained_fraction": 0.5,
+        "pretrained_noise": 0.01,
+    }
+
+    first = create_trainer(**options).create_initial_population()
+    second = create_trainer(**options).create_initial_population()
+    base_genome = seed_network.get_genome()
+
+    assert len(first) == 6
+    for left, right in zip(first, second):
+        np.testing.assert_array_equal(left, right)
+    np.testing.assert_array_equal(first[0], base_genome)
+    assert np.linalg.norm(first[1] - base_genome) < 1.0
+    assert np.linalg.norm(first[3] - base_genome) > 1.0
+
+
+def test_pretrained_fraction_leaves_a_random_member(tmp_path):
+    network = NeuralNetwork(
+        input_size=8,
+        hidden_layers=[16, 12],
+        output_size=2,
+        seed=7,
+    )
+    model_path = tmp_path / "best_prey.npz"
+    np.savez_compressed(model_path, genome=network.get_genome())
+
+    with pytest.raises(ValueError):
+        create_trainer(
+            pretrained_model_path=model_path,
+            pretrained_fraction=1.0,
+        )
 
 
 def test_population_evaluation_returns_fitness():
@@ -295,6 +348,9 @@ def test_save_results(tmp_path, monkeypatch):
     assert metadata["evaluation_seeds"] == [42, 123]
     assert metadata["fitness_mode"] == "baseline"
     assert metadata["food_progress_weight"] == 0.0
+    assert metadata["pretrained_model_path"] is None
+    assert metadata["pretrained_fraction"] == 0.5
+    assert metadata["pretrained_noise"] == 0.02
 
 
 def test_save_before_training_fails(tmp_path):
