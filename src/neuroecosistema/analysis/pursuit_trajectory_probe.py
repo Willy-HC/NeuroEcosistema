@@ -3,6 +3,7 @@
 
 import math
 
+import json
 import csv
 from collections import deque
 from pathlib import Path
@@ -361,6 +362,7 @@ def record_neural_decisions(records, step, model_id):
             "model": model_id,
             "step": step,
             "agent_object_id": id(agent),
+            "neural_inputs": None,
             "species": (
                 "prey"
                 if any(candidate is agent for candidate in environment.prey)
@@ -382,11 +384,17 @@ def record_neural_decisions(records, step, model_id):
         original_forward = network.forward
 
         def observed_forward(inputs):
+            # Registrar las entradas sin modificar el objeto original.
+            observation["neural_inputs"] = json.dumps(
+                [float(value) for value in inputs]
+            )
+
+            # Ejecutar exactamente la misma red neuronal.
             outputs = original_forward(inputs)
 
             observation["raw_dx"] = float(outputs[0])
             observation["raw_dy"] = float(outputs[1])
-
+            
             return outputs
 
         def observed_wall_avoidance(
