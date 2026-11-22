@@ -1,0 +1,154 @@
+﻿C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\dagger_prey.py:15: calculate_heuristic_direction,
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\dagger_prey.py:49: direction = calculate_heuristic_direction(prey, environment)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\dagger_prey.py:50: if direction is None:
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\dagger_prey.py:60: label = np.asarray(direction, dtype=np.float32)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\dagger_prey.py:114: network.set_genome(genome)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\main.py:63: network.set_genome(genome)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:14: calculate_heuristic_direction,
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:18: normalize_direction,
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:78: return normalize_direction(float(vector[0]), float(vector[1]))
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:81: def imitation_teacher_direction(agent, species, environment):
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:84: direction = calculate_heuristic_direction(agent, environment)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:111: toward_food = direction or (0.0, 0.0)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:112: direction = _unit((
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:118: if direction == (0.0, 0.0):
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:119: direction = away
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:121: effective_direction = apply_wall_avoidance(
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:123: direction[0] if direction is not None else 0.0,
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:124: direction[1] if direction is not None else 0.0,
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:128: return _unit(effective_direction)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:318: direction = imitation_teacher_direction(
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:323: label = direction or (0.0, 0.0)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:429: def _direction_loss_and_gradient(predictions, labels):
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:466: predictions = np.asarray(network.forward(features), dtype=np.float64)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:475: direction_loss, _ = _direction_loss_and_gradient(
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:483: return direction_loss + penalty, mse
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:500: _, gradient = _direction_loss_and_gradient(predictions, labels)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:606: "Direction learning requires a signed tanh output activation."
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:623: "labeled directions."
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:700: network.set_genome(best_genome)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:704: def _direction_metrics(network, features, labels, l2):
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:706: predicted = np.asarray(network.forward(features), dtype=np.float64)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:730: predicted_directions = predicted[predicted_valid] / (
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:733: label_directions = labels[labeled] / labels_norm[labeled, None]
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:743: "evaluated_directions": int(np.count_nonzero(labeled)),
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:760: "predicted_direction_resultant": (
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:761: float(np.linalg.norm(np.mean(predicted_directions, axis=0)))
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:762: if predicted_directions.size
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:765: "label_direction_resultant": (
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:766: float(np.linalg.norm(np.mean(label_directions, axis=0)))
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:767: if label_directions.size
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:972: split: _direction_metrics(
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:1027: scenario_type: _direction_metrics(
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\pretrain_imitation.py:1160: "direction_objective": {
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\base_agent.py:28: direction: float = 0.0
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\base_agent.py:29: direction_timer: int = 0
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\base_agent.py:30: direction_change_interval: int = 45
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\base_agent.py:235: neural_direction=None,
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\base_agent.py:243: if neural_direction is not None:
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\base_agent.py:244: dx, dy = neural_direction
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\base_agent.py:248: self.direction = math.atan2(dy, dx)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\base_agent.py:258: self.direction_timer += 1
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\base_agent.py:260: if self.direction_timer >= self.direction_change_interval:
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\base_agent.py:261: self.direction = rng.uniform(0, 2 * math.pi)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\base_agent.py:262: self.direction_timer = 0
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\base_agent.py:264: movement_x = math.cos(self.direction) * self.speed
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\base_agent.py:265: movement_y = math.sin(self.direction) * self.speed
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\heuristic_controller.py:4: from neuroecosistema.agents.neural_controller import normalize_direction
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\heuristic_controller.py:9: def calculate_heuristic_direction(agent, environment):
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\heuristic_controller.py:44: return normalize_direction(dx, dy)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\neural_controller.py:10: def normalize_direction(dx, dy):
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\neural_controller.py:71: return normalize_direction(
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\neural_controller.py:76: return normalize_direction(dx, dy)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\neural_controller.py:79: def calculate_neural_direction(agent, network, environment):
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\neural_controller.py:110: outputs = network.forward(inputs)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\agents\neural_controller.py:120: dx, dy = normalize_direction(dx, dy)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:13: calculate_heuristic_direction,
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:16: calculate_neural_direction,
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:17: normalize_direction,
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:45: SCENARIO_DIRECTIONS = (
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:64: food_direction: str | None
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:84: """Build food-direction, distance, and prey-position combinations."""
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:92: for direction_id, degrees in SCENARIO_DIRECTIONS:
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:101: f"{start_position_id}_{int(distance)}_{direction_id}"
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:107: food_direction=direction_id,
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:118: food_direction=None,
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:149: forward_outputs = network.forward(inputs)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:156: raise RuntimeError("El observador no coincide con NeuralNetwork.forward().")
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:161: def angular_error_degrees(direction, ideal_direction):
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:164: if ideal_direction is None:
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:167: observed = np.asarray(direction, dtype=np.float64)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:168: ideal = np.asarray(ideal_direction, dtype=np.float64)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:264: heuristic_direction = calculate_heuristic_direction(
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:268: effective_direction = (
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:269: heuristic_direction if heuristic_direction is not None else (0.0, 0.0)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:271: normalized_output = effective_direction
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:273: vector_is_null = math.hypot(*effective_direction) <= NULL_VECTOR_EPSILON
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:282: normalized_output = normalize_direction(
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:286: effective_direction = calculate_neural_direction(
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:297: ideal_direction = None
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:303: ideal_direction = (ideal_dx, ideal_dy)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:309: effective_direction,
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:310: ideal_direction,
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:321: effective_magnitude = math.hypot(*effective_direction)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:327: effective_direction[1],
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:328: effective_direction[0],
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:341: "food_direction": scenario.food_direction,
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:371: "effective_direction_x": effective_direction[0],
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:372: "effective_direction_y": effective_direction[1],
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:405: for axis, directions in (
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_orientation_probe.py:412: [row for row in rows if row["food_direction"] in directions],
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:77: "effective_direction_dx",
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:78: "effective_direction_dy",
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:179: def calculate_angular_error(ideal_vector, direction_vector):
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:183: direction_x, direction_y = direction_vector
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:185: direction_magnitude = math.hypot(direction_x, direction_y)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:188: if direction_magnitude <= VECTOR_EPSILON:
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:191: cross = ideal_x * direction_y - ideal_y * direction_x
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:192: dot = ideal_x * direction_x + ideal_y * direction_y
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:305: original_calculate_direction,
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:312: original_forward = network.forward
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:336: direction = original_wall_avoidance(
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:348: return direction
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:352: network.forward = capture_forward
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:354: direction = original_calculate_direction(agent, network, environment)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:359: network.forward = original_forward
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:361: del network.forward
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:368: context["effective_direction"] = tuple(map(float, direction))
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:369: return direction
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:394: original_calculate_direction = (
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:395: simulation_environment.calculate_neural_direction
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:416: def traced_calculate_direction(
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:487: direction = _capture_neural_decision(
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:491: original_calculate_direction,
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:495: return direction
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:497: simulation_environment.calculate_neural_direction = (
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:498: traced_calculate_direction
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:507: simulation_environment.calculate_neural_direction = (
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:508: original_calculate_direction
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:563: context["effective_direction"],
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:568: else "zero_effective_direction"
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:608: effective_direction = context["effective_direction"]
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:657: "effective_direction_dx": effective_direction[0],
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:658: "effective_direction_dy": effective_direction[1],
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:1060: "network forward pass, and wall-avoidance function; calls "
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\food_trajectory_probe.py:1082: "the effective direction returned by the real controller."
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\analysis\population_condition_probe.py:718: "The production Environment does not create obstacles."
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\evolution\behavior_evaluator.py:137: networks[id(agent)].set_genome(genome)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\evolution\episode_evaluator.py:48: network.set_genome(genome)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\neural_network\model_loader.py:36: network.set_genome(genome)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\neural_network\network.py:98: def set_genome(self, genome):
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\simulation\environment.py:6: calculate_heuristic_direction,
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\simulation\environment.py:9: calculate_neural_direction,
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\simulation\environment.py:225: direction = calculate_heuristic_direction(
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\simulation\environment.py:230: direction = None
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\simulation\environment.py:232: direction = (
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\simulation\environment.py:233: calculate_neural_direction(prey, network, self)
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\simulation\environment.py:238: decisions.append((prey, direction))
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\simulation\environment.py:244: direction = calculate_heuristic_direction(
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\simulation\environment.py:249: direction = None
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\simulation\environment.py:251: direction = (
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\simulation\environment.py:252: calculate_neural_direction(
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\simulation\environment.py:261: decisions.append((predator, direction))
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\simulation\environment.py:283: for agent, direction in decisions:
+C:\Users\corre\Documents\materias.exe\Universidad\IA\NeuroEcosistema\src\neuroecosistema\simulation\environment.py:289: neural_direction=direction,
