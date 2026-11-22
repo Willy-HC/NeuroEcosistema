@@ -74,11 +74,25 @@ modelo guardan el modo y el peso efectivo.
 
 ## Preentrenamiento por imitacion y coevolucion
 
-El preentrenamiento sintetiza estados para siete tipos de escenario y etiqueta
-la direccion efectiva de los controladores profesores. Los tipos de escenario
-se separan entre entrenamiento, validacion y prueba; validacion selecciona el
-checkpoint y prueba se consulta una vez despues. Las metricas y el historial
-se guardan junto a los modelos `.npz`, compatibles con el cargador existente.
+El preentrenamiento sintetiza siete tipos de escenario comunes y usa un
+curriculo de dos etapas: primero busqueda de alimento/persecucion y luego
+amenazas, evasion y combinaciones, conservando ejemplos de busqueda en la
+segunda etapa. Solo el curriculo de presas anade el escenario
+`food_with_distant_threat`, que coloca depredadores fuera del radio de evasion
+para reforzar que una amenaza lejana no debe desplazar la busqueda de alimento.
+Entrenamiento, validacion y prueba usan semillas distintas y estados
+sinteticos independientes que cubren las mismas familias de escena;
+validacion selecciona el checkpoint y prueba se consulta despues. Los casos
+sin objetivo no inventan una etiqueta direccional ni contribuyen al gradiente.
+Cuando hay comida y depredadores, la etiqueta combina la busqueda con una
+huida reactiva ponderada por la proximidad de la amenaza; sin comida, una
+presa solo recibe etiqueta de movimiento si una amenaza cercana exige huir.
+La perdida optimiza direccion angular (la misma que consume el controlador,
+que normaliza las salidas) y penaliza salidas de magnitud casi nula. La segunda
+etapa conserva por repeticion la mitad de sus ejemplos de busqueda/persecucion
+para reducir el olvido al aprender evasion. Las metricas tambien informan
+error angular, saturacion y sesgo direccional.
+Los modelos `.npz` siguen siendo compatibles con el cargador existente.
 Ejecuta cada etapa en un directorio de salida nuevo para evitar sobrescribir
 resultados:
 
@@ -137,9 +151,63 @@ lo que la imitacion no aprende anticipacion. La evaluacion es finita y
 reproducible, pero no garantiza generalizacion fuera de los escenarios
 muestreados.
 
-La comprobacion de humo local entreno ambas redes con 14/7/7 muestras y hasta
-dos epocas, y ejecuto la comparacion con una semilla, un escenario y dos pasos.
-Verifico el flujo de archivos y la carga; no mide calidad de politica. No se
-han ejecutado preentrenamiento completo, generaciones coevolutivas ni una
-comparacion de rendimiento, por lo que aun no hay evidencia de mejora frente a
-los controladores existentes.
+En un diagnostico acotado se entrenaron ambas redes con 4.000/700/700
+escenarios sinteticos y hasta 30 epocas; despues se evaluaron 500 pasos con
+tres semillas nuevas (3001, 3002 y 3003), fijando la politica de la especie
+oponente como aleatoria. En 10/2/30, la presa neuronal consumio 0,97 plantas
+por presa frente a 0,53 aleatorias, y el depredador capturo 0,50 presas frente
+a 0,33 aleatorias. En 50/10/100, la presa consumio 1,89 frente a 2,05, y el
+depredador capturo 2,47 frente a 1,23. Por tanto, la presa supera el control
+aleatorio en la condicion de baja densidad, pero no en la alta; el criterio
+alimentario general sigue incumplido y no se debe considerar lista para
+coevolucion. El depredador supera el control aleatorio en ambas condiciones.
+
+El error angular de entrenamiento/validacion/prueba fue 32,89/32,75/37,23
+grados para presas y 31,12/32,54/32,27 para depredadores. No se midio
+saturacion ni norma casi nula en las salidas etiquetadas. Esto no demuestra
+que la conducta sea suficiente en el entorno: la evaluacion de consumo de la
+presa aun falla en una condicion no vista. No se ejecuto coevolucion ni
+preentrenamiento largo.
+
+Como intervencion acotada se reforzo solo el curriculo de presas con escenas
+de alimento visible y depredadores fuera del radio de evasion; el curriculo de
+depredadores no cambia. Una candidata temporal entrenada con 4.000/700/700
+escenas y hasta 30 epocas obtuvo 26,65 grados de error en esa familia de
+prueba sintetica, pero no mejoro el consumo en episodios de 500 pasos con tres
+semillas nuevas. En 10/2/30 consumio 0,53 plantas por presa frente a 0,87 del
+control aleatorio; en 50/10/100 consumio 1,41 frente a 1,99. La supervivencia
+media fue 500 frente a 500 pasos en baja densidad y 431 frente a 424 en alta.
+No se cumplen los criterios de aceptacion: la candidata no se promovio y los
+modelos existentes se conservaron. No se ejecuto coevolucion.
+
+### Piloto DAgger para presas
+
+`neuroecosistema.dagger_prey` parte de `models/imitation/best_prey.npz`, recoge
+en hasta tres rondas las percepciones exactas de presas movidas por la red y
+las etiquetas del controlador heuristico en episodios cortos con depredadores
+aleatorios. Los estados sin planta objetivo se excluyen. Cada actualizacion
+conserva los datos DAgger de rondas anteriores y una pequena memoria de los
+escenarios supervisados existentes; usa el mismo optimizador supervisado.
+Cada candidato se compara en las mismas semillas reservadas de 10/2/30 y
+50/10/100 con la red inicial, el control aleatorio y el heuristico. La
+seleccion considera conjuntamente alimento y retencion de supervivencia.
+La salida se guarda en un directorio nuevo bajo `results/`, sin sobrescribir
+el modelo inicial ni alterar el de depredador:
+
+```powershell
+uv run python -m neuroecosistema.dagger_prey `
+  --initial-model models\imitation\best_prey.npz `
+  --output-dir results\prey_dagger_pilot
+```
+
+En la corrida piloto de tres rondas (100 pasos de recoleccion; 500 de
+evaluacion; semillas reservadas 8401201-8401203), la ronda 2 fue el mejor
+balance: obtuvo 1,70 plantas por presa en 10/2/30 frente a 0,83 aleatorias y
+2,65 en 50/10/100 frente a 1,87 aleatorias. Supero al aleatorio en las tres
+semillas de ambos escenarios. La supervivencia fue 484,4/500 pasos en baja y
+411,8/500 en alta densidad; en alta, esto supera los 405,2 pasos aleatorios,
+pero es 10,3% inferior a la red inicial (459,1). Por el margen conservador
+del piloto (90% de la supervivencia inicial), el candidato no se promueve a
+`models/imitation/`; se conserva aparte en
+`results/prey_dagger_pilot/best_prey.npz` para revision. La red original y el
+modelo de depredador no se modificaron.

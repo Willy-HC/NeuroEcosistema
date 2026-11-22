@@ -29,6 +29,7 @@ from neuroecosistema.train import load_configs
 
 DEFAULT_SEED = 8121901
 ESCAPE_RADIUS = 180.0
+DISTANT_FOOD_THREAT_SCENARIO = "food_with_distant_threat"
 SCENARIO_TYPES = (
     "objective_only",
     "threat_only",
@@ -38,17 +39,39 @@ SCENARIO_TYPES = (
     "near_wall_threat",
     "multiple_targets",
 )
-SCENARIO_SPLITS = {
-    "train": (
-        "objective_only",
+PREY_SCENARIO_TYPES = (
+    *SCENARIO_TYPES,
+    DISTANT_FOOD_THREAT_SCENARIO,
+)
+CURRICULUM_PHASES = {
+    "goal_seeking": ("objective_only",),
+    "safety_and_mixed": (
         "threat_only",
         "objective_and_threat",
         "no_objective",
         "near_wall_objective",
+        "near_wall_threat",
+        "multiple_targets",
     ),
-    "validation": ("near_wall_threat",),
-    "test": ("multiple_targets",),
 }
+PREY_CURRICULUM_PHASES = {
+    "goal_seeking": CURRICULUM_PHASES["goal_seeking"],
+    "safety_and_mixed": (
+        "threat_only",
+        "objective_and_threat",
+        "no_objective",
+        "near_wall_objective",
+        "near_wall_threat",
+        "multiple_targets",
+        DISTANT_FOOD_THREAT_SCENARIO,
+        DISTANT_FOOD_THREAT_SCENARIO,
+        DISTANT_FOOD_THREAT_SCENARIO,
+    ),
+}
+GOAL_REPLAY_FRACTION = 0.5
+OUTPUT_NORM_TARGET = 0.8
+OUTPUT_NORM_WEIGHT = 0.1
+OUTPUT_NORM_EPSILON = 1e-8
 
 
 def _unit(vector):
@@ -95,13 +118,10 @@ def imitation_teacher_direction(agent, species, environment):
                 if direction == (0.0, 0.0):
                     direction = away
 
-    if direction is None:
-        direction = (1.0, 0.0)
-
     effective_direction = apply_wall_avoidance(
         agent,
-        direction[0],
-        direction[1],
+        direction[0] if direction is not None else 0.0,
+        direction[1] if direction is not None else 0.0,
         environment.width,
         environment.height,
     )
@@ -121,6 +141,28 @@ def _place_relative(rng, origin, distance_range, width, height, radius):
             max(radius, origin[1] + distance * math.sin(angle)),
         ),
     )
+
+
+def _place_distant_threat(rng, origin, width, height, radius):
+    for _ in range(32):
+        x, y = _place_relative(
+            rng,
+            origin,
+            (220.0, 400.0),
+            width,
+            height,
+            radius,
+        )
+        if math.dist(origin, (x, y)) > ESCAPE_RADIUS:
+            return x, y
+
+    corners = (
+        (radius, radius),
+        (width - radius, radius),
+        (radius, height - radius),
+        (width - radius, height - radius),
+    )
+    return max(corners, key=lambda point: math.dist(origin, point))
 
 
 def _scenario_anchor(rng, width, height, near_wall):
@@ -157,13 +199,16 @@ def _build_synthetic_state(species, scenario_type, rng, width, height):
             "objective_and_threat",
             "near_wall_objective",
             "multiple_targets",
+            DISTANT_FOOD_THREAT_SCENARIO,
         }:
             count = 3 if scenario_type == "multiple_targets" else 1
             for index in range(count):
                 distance_range = (
-                    (12.0, 65.0)
+                    (12.0, 600.0)
+                    if scenario_type == "objective_only"
+                    else (12.0, 250.0)
                     if index == 0
-                    else (80.0, 500.0)
+                    else (80.0, 600.0)
                 )
                 x, y = _place_relative(
                     rng,
@@ -179,28 +224,36 @@ def _build_synthetic_state(species, scenario_type, rng, width, height):
             "objective_and_threat",
             "near_wall_threat",
             "multiple_targets",
+            DISTANT_FOOD_THREAT_SCENARIO,
         }:
-            threat_range = (
-                (12.0, 90.0)
-                if scenario_type in {
-                    "threat_only",
-                    "near_wall_threat",
-                }
-                else (35.0, 300.0)
-            )
             count = 3 if scenario_type == "multiple_targets" else 1
             for _ in range(count):
-                x, y = _place_relative(
-                    rng,
-                    anchor,
-                    threat_range,
-                    width,
-                    height,
-                    radius=6,
-                )
+                if scenario_type == DISTANT_FOOD_THREAT_SCENARIO:
+                    x, y = _place_distant_threat(
+                        rng,
+                        anchor,
+                        width,
+                        height,
+                        radius=6,
+                    )
+                else:
+                    threat_range = (
+                        (12.0, 90.0)
+                        if scenario_type in {
+                            "threat_only",
+                            "near_wall_threat",
+                        }
+                        else (35.0, 300.0)
+                    )
+                    x, y = _place_relative(
+                        rng,
+                        anchor,
+                        threat_range,
+                        width,
+                        height,
+                        radius=6,
+                    )
                 predators.append(Predator(x=x, y=y))
-        if near_wall and rng.random() < 0.5:
-            agent.wall_escape_active = True
         environment = SimpleNamespace(
             plants=plants,
             predators=predators,
@@ -246,8 +299,6 @@ def _build_synthetic_state(species, scenario_type, rng, width, height):
                     radius=5,
                 )
                 prey_agents.append(Prey(x=x, y=y))
-        if near_wall and rng.random() < 0.5:
-            agent.wall_escape_active = True
         environment = SimpleNamespace(
             plants=[],
             predators=[],
@@ -264,11 +315,12 @@ def _build_synthetic_state(species, scenario_type, rng, width, height):
     else:
         raise ValueError(f"Unknown species: {species}")
 
-    label = imitation_teacher_direction(
+    direction = imitation_teacher_direction(
         agent,
         species,
         environment,
     )
+    label = direction or (0.0, 0.0)
     return inputs, np.asarray(label, dtype=np.float32)
 
 
@@ -285,8 +337,11 @@ def generate_teacher_dataset(
     if species not in {"prey", "predator"}:
         raise ValueError("species must be 'prey' or 'predator'.")
     scenario_types = tuple(scenario_types)
+    allowed_scenarios = (
+        PREY_SCENARIO_TYPES if species == "prey" else SCENARIO_TYPES
+    )
     if not scenario_types or any(
-        scenario_type not in SCENARIO_TYPES
+        scenario_type not in allowed_scenarios
         for scenario_type in scenario_types
     ):
         raise ValueError("scenario_types must contain known scenarios.")
@@ -321,6 +376,29 @@ def generate_teacher_dataset(
     return features, labels, scenario_ids
 
 
+def _combine_datasets(*datasets):
+    return (
+        np.concatenate([dataset[0] for dataset in datasets]),
+        np.concatenate([dataset[1] for dataset in datasets]),
+        [
+            scenario_id
+            for dataset in datasets
+            for scenario_id in dataset[2]
+        ],
+    )
+
+
+def _minimum_training_samples(safety_scenario_count):
+    sample_count = 1
+    while True:
+        goal_count = max(1, round(sample_count * 0.4))
+        safety_count = sample_count - goal_count
+        replay_count = max(1, round(safety_count * GOAL_REPLAY_FRACTION))
+        if safety_count - replay_count >= safety_scenario_count:
+            return sample_count
+        sample_count += 1
+
+
 def _forward_with_cache(network, inputs):
     activation = inputs.astype(np.float64, copy=False)
     activations = [activation]
@@ -332,24 +410,77 @@ def _forward_with_cache(network, inputs):
         preactivation = activation @ weights.T + biases
         preactivations.append(preactivation)
         if index == len(network.weights) - 1:
-            activation = np.tanh(preactivation)
+            activation = network.output_activation(preactivation)
         else:
-            activation = np.maximum(0.0, preactivation)
+            activation = network.hidden_activation(preactivation)
         activations.append(activation)
 
     return activation, activations, preactivations
 
 
+def _activation_derivative(name, preactivation, activation):
+    if name == "relu":
+        return preactivation > 0.0
+    if name == "tanh":
+        return 1.0 - activation**2
+    raise ValueError(f"Unsupported activation for training: {name}")
+
+
+def _direction_loss_and_gradient(predictions, labels):
+    label_norms = np.linalg.norm(labels, axis=1)
+    valid = label_norms > OUTPUT_NORM_EPSILON
+    gradient = np.zeros_like(predictions, dtype=np.float64)
+    if not np.any(valid):
+        return 0.0, gradient
+
+    active_predictions = predictions[valid]
+    active_labels = labels[valid] / label_norms[valid, None]
+    squared_norms = np.sum(active_predictions**2, axis=1)
+    norms = np.sqrt(squared_norms + OUTPUT_NORM_EPSILON)
+    dot_products = np.sum(active_predictions * active_labels, axis=1)
+    cosine = dot_products / norms
+    norm_error = norms - OUTPUT_NORM_TARGET
+    losses = (
+        1.0
+        - cosine
+        + OUTPUT_NORM_WEIGHT * norm_error**2
+    )
+
+    active_gradient = (
+        -active_labels / norms[:, None]
+        + (
+            dot_products / norms**3
+        )[:, None] * active_predictions
+        + (
+            2.0
+            * OUTPUT_NORM_WEIGHT
+            * norm_error
+            / norms
+        )[:, None] * active_predictions
+    ) / np.count_nonzero(valid)
+    gradient[valid] = active_gradient
+    return float(np.mean(losses)), gradient
+
+
 def _loss(network, features, labels, l2):
-    predictions = network.forward(features)
+    predictions = np.asarray(network.forward(features), dtype=np.float64)
     if not np.all(np.isfinite(predictions)):
         raise FloatingPointError("Network produced non-finite outputs.")
-    mse = float(np.mean((predictions - labels) ** 2))
+    labels = np.asarray(labels, dtype=np.float64)
+    valid = np.linalg.norm(labels, axis=1) > OUTPUT_NORM_EPSILON
+    if np.any(valid):
+        mse = float(np.mean((predictions[valid] - labels[valid]) ** 2))
+    else:
+        mse = 0.0
+    direction_loss, _ = _direction_loss_and_gradient(
+        predictions,
+        labels,
+    )
     penalty = 0.5 * l2 * sum(
         float(np.sum(weights**2))
         for weights in network.weights
     )
-    return mse + penalty, mse
+    return direction_loss + penalty, mse
 
 
 def _train_batch(
@@ -366,17 +497,22 @@ def _train_batch(
         network,
         features,
     )
-    batch_size, output_size = labels.shape
-    gradient = 2.0 * (predictions - labels) / (batch_size * output_size)
+    _, gradient = _direction_loss_and_gradient(predictions, labels)
+    if not np.any(np.linalg.norm(labels, axis=1) > OUTPUT_NORM_EPSILON):
+        return
 
     gradients = []
     for layer_index in reversed(range(len(network.weights))):
-        if layer_index == len(network.weights) - 1:
-            gradient = gradient * (1.0 - predictions**2)
-        else:
-            gradient = gradient * (
-                preactivations[layer_index] > 0.0
-            )
+        activation_name = (
+            network.output_activation_name
+            if layer_index == len(network.weights) - 1
+            else network.hidden_activation_name
+        )
+        gradient = gradient * _activation_derivative(
+            activation_name,
+            preactivations[layer_index],
+            activations[layer_index + 1],
+        )
 
         weight_gradient = gradient.T @ activations[layer_index]
         weight_gradient += l2 * network.weights[layer_index]
@@ -455,6 +591,37 @@ def train_supervised_network(
         or l2 < 0
     ):
         raise ValueError("learning_rate must be positive and L2 nonnegative.")
+    if (
+        train_features.ndim != 2
+        or validation_features.ndim != 2
+        or train_features.shape[1] != network.input_size
+        or validation_features.shape[1] != network.input_size
+        or train_labels.shape != (len(train_features), network.output_size)
+        or validation_labels.shape
+        != (len(validation_features), network.output_size)
+    ):
+        raise ValueError("Training data shapes do not match the network.")
+    if network.output_activation_name != "tanh":
+        raise ValueError(
+            "Direction learning requires a signed tanh output activation."
+        )
+    if (
+        not np.all(np.isfinite(train_features))
+        or not np.all(np.isfinite(train_labels))
+        or not np.all(np.isfinite(validation_features))
+        or not np.all(np.isfinite(validation_labels))
+        or not np.any(
+            np.linalg.norm(validation_labels, axis=1)
+            > OUTPUT_NORM_EPSILON
+        )
+        or not np.any(
+            np.linalg.norm(train_labels, axis=1) > OUTPUT_NORM_EPSILON
+        )
+    ):
+        raise ValueError(
+            "Training data must be finite and both splits must contain "
+            "labeled directions."
+        )
 
     first_moments = [
         (np.zeros_like(weights), np.zeros_like(biases))
@@ -476,11 +643,17 @@ def train_supervised_network(
         order = rng.permutation(len(train_features))
         for start in range(0, len(order), batch_size):
             batch_indices = order[start:start + batch_size]
+            batch_labels = train_labels[batch_indices]
+            if not np.any(
+                np.linalg.norm(batch_labels, axis=1)
+                > OUTPUT_NORM_EPSILON
+            ):
+                continue
             step += 1
             _train_batch(
                 network,
                 train_features[batch_indices],
-                train_labels[batch_indices],
+                batch_labels,
                 first_moments,
                 second_moments,
                 step,
@@ -533,21 +706,67 @@ def _direction_metrics(network, features, labels, l2):
     predicted = np.asarray(network.forward(features), dtype=np.float64)
     predicted_norm = np.linalg.norm(predicted, axis=1)
     labels_norm = np.linalg.norm(labels, axis=1)
-    valid = (predicted_norm > 1e-8) & (labels_norm > 1e-8)
-    cosine = np.sum(predicted[valid] * labels[valid], axis=1)
-    cosine /= predicted_norm[valid] * labels_norm[valid]
-    angular_error = np.degrees(
-        np.arccos(np.clip(cosine, -1.0, 1.0))
+    labeled = labels_norm > OUTPUT_NORM_EPSILON
+    predicted_valid = labeled & (predicted_norm > 1e-8)
+    angular_error = np.full(
+        np.count_nonzero(labeled),
+        180.0,
+        dtype=np.float64,
     )
+    if np.any(predicted_valid):
+        cosine = np.sum(
+            predicted[predicted_valid] * labels[predicted_valid],
+            axis=1,
+        )
+        cosine /= (
+            predicted_norm[predicted_valid]
+            * labels_norm[predicted_valid]
+        )
+        angular_error[predicted_norm[labeled] > 1e-8] = (
+            np.degrees(
+                np.arccos(np.clip(cosine, -1.0, 1.0))
+            )
+        )
+    predicted_directions = predicted[predicted_valid] / (
+        predicted_norm[predicted_valid, None]
+    )
+    label_directions = labels[labeled] / labels_norm[labeled, None]
+    active_output_norms = predicted_norm[labeled]
     return {
         "loss": float(loss),
         "mse": float(mse),
         "mean_angular_error_degrees": (
             float(np.mean(angular_error))
             if angular_error.size
+            else None
+        ),
+        "evaluated_directions": int(np.count_nonzero(labeled)),
+        "unlabeled_samples": int(len(labels) - np.count_nonzero(labeled)),
+        "low_output_norm_fraction": (
+            float(np.mean(predicted_norm[labeled] <= 1e-8))
+            if np.any(labeled)
             else 0.0
         ),
-        "evaluated_directions": int(angular_error.size),
+        "mean_output_norm": (
+            float(np.mean(active_output_norms))
+            if active_output_norms.size
+            else 0.0
+        ),
+        "output_saturation_fraction": (
+            float(np.mean(np.abs(predicted[labeled]) >= 0.995))
+            if np.any(labeled)
+            else 0.0
+        ),
+        "predicted_direction_resultant": (
+            float(np.linalg.norm(np.mean(predicted_directions, axis=0)))
+            if predicted_directions.size
+            else 0.0
+        ),
+        "label_direction_resultant": (
+            float(np.linalg.norm(np.mean(label_directions, axis=0)))
+            if label_directions.size
+            else 0.0
+        ),
     }
 
 
@@ -579,40 +798,176 @@ def pretrain_species(
     learning_rate,
     l2,
 ):
+    curriculum_phases = (
+        PREY_CURRICULUM_PHASES
+        if species == "prey"
+        else CURRICULUM_PHASES
+    )
+    scenario_types = (
+        PREY_SCENARIO_TYPES if species == "prey" else SCENARIO_TYPES
+    )
+    safety_scenarios = tuple(
+        dict.fromkeys(curriculum_phases["safety_and_mixed"])
+    )
+    minimum_train_samples = _minimum_training_samples(
+        len(curriculum_phases["safety_and_mixed"])
+    )
+    minimum_validation_samples = 2 * len(safety_scenarios)
+
+    if max_epochs < 2:
+        raise ValueError("Curriculum training requires at least two epochs.")
+    if train_samples < minimum_train_samples:
+        raise ValueError(
+            "train_samples must be at least "
+            f"{minimum_train_samples} for this species' curriculum."
+        )
+    if (
+        validation_samples < minimum_validation_samples
+        or test_samples < minimum_validation_samples
+    ):
+        raise ValueError(
+            "Validation and test splits must cover goal seeking and "
+            "each safety scenario."
+        )
+
+    navigation_count = max(1, round(train_samples * 0.4))
+    safety_count = train_samples - navigation_count
     split_seeds = {
-        "train": seed,
-        "validation": seed + 1_000_003,
-        "test": seed + 2_000_033,
+        "train_goal_seeking": seed,
+        "train_goal_replay": seed + 100_003,
+        "train_safety_and_mixed": seed + 200_003,
+        "validation_goal_seeking": seed + 1_000_003,
+        "validation_goal_replay": seed + 1_100_033,
+        "validation_safety": seed + 1_200_037,
+        "test_goal": seed + 2_000_033,
+        "test_safety": seed + 2_100_037,
     }
+    replay_count = max(1, round(safety_count * GOAL_REPLAY_FRACTION))
+    advanced_count = safety_count - replay_count
+    validation_goal_count = validation_samples // 2
+    validation_safety_count = validation_samples - validation_goal_count
+    test_goal_count = test_samples // 2
+    test_safety_count = test_samples - test_goal_count
     datasets = {
-        split: generate_teacher_dataset(
+        "train_goal_seeking": generate_teacher_dataset(
             species,
-            count,
-            split_seeds[split],
+            navigation_count,
+            split_seeds["train_goal_seeking"],
             map_width,
             map_height,
-            scenario_types=SCENARIO_SPLITS[split],
-        )
-        for split, count in (
-            ("train", train_samples),
-            ("validation", validation_samples),
-            ("test", test_samples),
-        )
+            scenario_types=curriculum_phases["goal_seeking"],
+        ),
+        "train_goal_replay": generate_teacher_dataset(
+            species,
+            replay_count,
+            split_seeds["train_goal_replay"],
+            map_width,
+            map_height,
+            scenario_types=curriculum_phases["goal_seeking"],
+        ),
+        "train_safety_examples": generate_teacher_dataset(
+            species,
+            advanced_count,
+            split_seeds["train_safety_and_mixed"],
+            map_width,
+            map_height,
+            scenario_types=curriculum_phases["safety_and_mixed"],
+        ),
+        "validation_goal_seeking": generate_teacher_dataset(
+            species,
+            validation_goal_count,
+            split_seeds["validation_goal_seeking"],
+            map_width,
+            map_height,
+            scenario_types=curriculum_phases["goal_seeking"],
+        ),
+        "validation_goal_replay": generate_teacher_dataset(
+            species,
+            validation_goal_count,
+            split_seeds["validation_goal_replay"],
+            map_width,
+            map_height,
+            scenario_types=curriculum_phases["goal_seeking"],
+        ),
+        "validation_safety": generate_teacher_dataset(
+            species,
+            validation_safety_count,
+            split_seeds["validation_safety"],
+            map_width,
+            map_height,
+            scenario_types=safety_scenarios,
+        ),
+        "test_goal": generate_teacher_dataset(
+            species,
+            test_goal_count,
+            split_seeds["test_goal"],
+            map_width,
+            map_height,
+            scenario_types=curriculum_phases["goal_seeking"],
+        ),
+        "test_safety": generate_teacher_dataset(
+            species,
+            test_safety_count,
+            split_seeds["test_safety"],
+            map_width,
+            map_height,
+            scenario_types=safety_scenarios,
+        ),
     }
+    datasets["train_safety_and_mixed"] = _combine_datasets(
+        datasets["train_goal_replay"],
+        datasets["train_safety_examples"],
+    )
+    datasets["validation"] = _combine_datasets(
+        datasets["validation_goal_replay"],
+        datasets["validation_safety"],
+    )
+    datasets["test"] = _combine_datasets(
+        datasets["test_goal"],
+        datasets["test_safety"],
+    )
     network = _network_from_seed(neural_config, seed + 17)
-    network, history, best_epoch = train_supervised_network(
+    goal_epochs = max(1, max_epochs // 3)
+    safety_epochs = max_epochs - goal_epochs
+    network, goal_history, goal_best_epoch = train_supervised_network(
         network,
-        datasets["train"][0],
-        datasets["train"][1],
-        datasets["validation"][0],
-        datasets["validation"][1],
+        datasets["train_goal_seeking"][0],
+        datasets["train_goal_seeking"][1],
+        datasets["validation_goal_seeking"][0],
+        datasets["validation_goal_seeking"][1],
         seed=seed + 29,
-        max_epochs=max_epochs,
+        max_epochs=goal_epochs,
         batch_size=batch_size,
         patience=patience,
         learning_rate=learning_rate,
         l2=l2,
     )
+    network, safety_history, safety_best_epoch = (
+        train_supervised_network(
+            network,
+            datasets["train_safety_and_mixed"][0],
+            datasets["train_safety_and_mixed"][1],
+            datasets["validation"][0],
+            datasets["validation"][1],
+            seed=seed + 31,
+            max_epochs=safety_epochs,
+            batch_size=batch_size,
+            patience=patience,
+            learning_rate=learning_rate,
+            l2=l2,
+        )
+    )
+    history = [
+        {"phase": "goal_seeking", **row}
+        for row in goal_history
+    ] + [
+        {"phase": "safety_and_mixed", **row}
+        for row in safety_history
+    ]
+    best_epochs = {
+        "goal_seeking": goal_best_epoch,
+        "safety_and_mixed": safety_best_epoch,
+    }
     metrics = {
         split: _direction_metrics(
             network,
@@ -648,14 +1003,59 @@ def pretrain_species(
             "validation": validation_samples,
             "test": test_samples,
         },
-        "best_epoch": best_epoch,
+        "best_epoch": safety_best_epoch,
+        "best_epochs_by_phase": best_epochs,
         "epochs_run": len(history),
         "metrics": metrics,
         "history": history,
-        "scenario_types": list(SCENARIO_TYPES),
-        "scenario_types_by_split": {
-            split: list(scenario_types)
-            for split, scenario_types in SCENARIO_SPLITS.items()
+        "scenario_types": list(scenario_types),
+        "scenario_types_by_phase": {
+            phase: list(scenario_types)
+            for phase, scenario_types in curriculum_phases.items()
+        },
+        "unlabeled_samples_by_split": {
+            split: int(
+                np.count_nonzero(
+                    np.linalg.norm(dataset[1], axis=1)
+                    <= OUTPUT_NORM_EPSILON
+                )
+            )
+            for split, dataset in datasets.items()
+        },
+        "scenario_metrics": {
+            split: {
+                scenario_type: _direction_metrics(
+                    network,
+                    np.asarray([
+                        feature
+                        for feature, scenario_id in zip(
+                            dataset[0],
+                            dataset[2],
+                        )
+                        if scenario_id.rsplit(":", 1)[-1]
+                        == scenario_type
+                    ]),
+                    np.asarray([
+                        label
+                        for label, scenario_id in zip(
+                            dataset[1],
+                            dataset[2],
+                        )
+                        if scenario_id.rsplit(":", 1)[-1]
+                        == scenario_type
+                    ]),
+                    l2,
+                )
+                for scenario_type in scenario_types
+                if any(
+                    scenario_id.rsplit(":", 1)[-1] == scenario_type
+                    for scenario_id in dataset[2]
+                )
+            }
+            for split, dataset in (
+                ("validation", datasets["validation"]),
+                ("test", datasets["test"]),
+            )
         },
     }
 
@@ -676,13 +1076,31 @@ def main():
     parser.add_argument("--l2", type=float, default=0.0001)
     args = parser.parse_args()
 
-    if min(
-        args.train_samples,
-        args.validation_samples,
-        args.test_samples,
-    ) < len(SCENARIO_TYPES):
+    if args.epochs < 2:
+        parser.error("--epochs must be at least 2 for the curriculum.")
+    minimum_train_samples = max(
+        _minimum_training_samples(
+            len(PREY_CURRICULUM_PHASES["safety_and_mixed"])
+        ),
+        _minimum_training_samples(
+            len(CURRICULUM_PHASES["safety_and_mixed"])
+        ),
+    )
+    if args.train_samples < minimum_train_samples:
         parser.error(
-            f"Each split needs at least {len(SCENARIO_TYPES)} scenarios."
+            "--train-samples must be at least "
+            f"{minimum_train_samples} for both species' curricula."
+        )
+    minimum_validation_samples = max(
+        2 * len(set(PREY_CURRICULUM_PHASES["safety_and_mixed"])),
+        2 * len(set(CURRICULUM_PHASES["safety_and_mixed"])),
+    )
+    if min(args.validation_samples, args.test_samples) < (
+        minimum_validation_samples
+    ):
+        parser.error(
+            "Validation and test sample counts must be at least "
+            f"{minimum_validation_samples}."
         )
 
     simulation_config, neural_config, _ = load_configs()
@@ -739,22 +1157,43 @@ def main():
                     "batch_size": args.batch_size,
                     "patience": args.patience,
                 },
+                "direction_objective": {
+                    "loss": (
+                        "one minus cosine similarity plus an output-norm "
+                        "penalty"
+                    ),
+                    "target_output_norm": OUTPUT_NORM_TARGET,
+                    "output_norm_weight": OUTPUT_NORM_WEIGHT,
+                    "goal_replay_fraction": GOAL_REPLAY_FRACTION,
+                },
                 "splits": {
                     "train": (
-                        "scenario types reserved for optimization; "
-                        "instances generated from the train seed"
+                        "independent synthetic states; goal-seeking stage "
+                        "followed by safety and mixed scenarios"
                     ),
                     "validation": (
-                        "held-out scenario types; controls early stopping"
+                        "independent seed and generated states spanning all "
+                        "scenario families; controls early stopping"
                     ),
                     "test": (
-                        "held-out scenario types; evaluated after model "
+                        "independent seed and generated states spanning all "
+                        "scenario families; evaluated after model "
                         "selection only"
                     ),
                 },
-                "scenario_types_by_split": {
-                    split: list(scenario_types)
-                    for split, scenario_types in SCENARIO_SPLITS.items()
+                "curriculum_phases": {
+                    phase: list(scenario_types)
+                    for phase, scenario_types in CURRICULUM_PHASES.items()
+                },
+                "curriculum_phases_by_species": {
+                    species: {
+                        phase: list(scenario_types)
+                        for phase, scenario_types in curriculum.items()
+                    }
+                    for species, curriculum in (
+                        ("prey", PREY_CURRICULUM_PHASES),
+                        ("predator", CURRICULUM_PHASES),
+                    )
                 },
                 "species": metrics,
             },
@@ -772,6 +1211,7 @@ def main():
     ) as file:
         fieldnames = (
             "species",
+            "phase",
             "epoch",
             "train_loss",
             "train_mse",
@@ -784,7 +1224,12 @@ def main():
             writer.writerows(
                 {
                     "species": result["species"],
-                    **row,
+                    "phase": row["phase"],
+                    **{
+                        key: value
+                        for key, value in row.items()
+                        if key != "phase"
+                    },
                 }
                 for row in result["history"]
             )
