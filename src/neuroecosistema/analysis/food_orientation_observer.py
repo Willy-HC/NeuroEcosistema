@@ -108,9 +108,12 @@ class FoodOrientationObserver:
                 tracker.close("self_consumed")
 
             elif target_id not in active_plants:
-                # La ausencia por sí sola no demuestra
-                # que otra presa haya consumido la planta.
-                tracker.close("disappeared")
+                if self._consumed_by_other(
+                    target_id, prey, evaluated_prey
+                ):
+                    tracker.close("other_consumed")
+                else:
+                    tracker.close("disappeared")
 
             elif not prey.alive:
                 tracker.close("prey_dead")
@@ -135,3 +138,22 @@ class FoodOrientationObserver:
             }
             for prey_id, tracker in self.trackers.items()
         }
+    
+    @staticmethod
+    def _consumed_by_other(target_id, prey, evaluated_prey):
+        """Comprueba si otra presa consumió la planta objetivo."""
+        for other in evaluated_prey:
+            if other is prey:
+                continue
+
+            reference = other.food_progress_references.get(
+                target_id
+            )
+
+            if (
+                reference is not None
+                and reference.status == "consumed"
+            ):
+                return True
+
+        return False

@@ -221,3 +221,41 @@ def test_unexplained_disappearance_is_not_consumption():
     result = observer.results()[id(prey)]
 
     assert result["close_reason"] == "disappeared"
+
+
+def test_other_prey_consumes_reference():
+    environment = Environment(
+        width=1000,
+        height=700,
+        initial_food=0,
+        seed=42,
+        max_food=5,
+    )
+    environment.generate_agents(2, 0)
+
+    prey_a, prey_b = environment.prey
+
+    prey_a.x, prey_a.y = 100, 100
+    prey_b.x, prey_b.y = 300, 100
+
+    plant = environment.spawn_plant()
+    plant.x, plant.y = 300, 100
+
+    evaluated_prey = environment.prey[:]
+
+    observer = FoodOrientationObserver(environment)
+
+    # Registrar las referencias existentes.
+    for prey in evaluated_prey:
+        prey.synchronize_food_progress_references(
+            environment.plants
+        )
+
+    environment.resolve_interactions()
+    observer.after_interactions(evaluated_prey)
+
+    result_a = observer.results()[id(prey_a)]
+    result_b = observer.results()[id(prey_b)]
+
+    assert result_a["close_reason"] == "other_consumed"
+    assert result_b["close_reason"] == "self_consumed"
