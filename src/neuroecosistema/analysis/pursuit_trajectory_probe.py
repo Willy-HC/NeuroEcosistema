@@ -142,6 +142,7 @@ def run_pursuit_probe(
 
     rows = []
     neural_records = []
+    agent_id_maps = {}
 
     for model_id in ("5G", "30G"):
         environment = _create_environment(
@@ -168,6 +169,11 @@ def run_pursuit_probe(
             ("predator", index, agent)
             for index, agent in enumerate(environment.predators)
         ]
+
+        agent_id_maps[model_id] = {
+            id(agent): f"{species}_{index}"
+            for species, index, agent in agents
+        }
 
         histories = {
             id(agent): deque(maxlen=window_size)
@@ -309,6 +315,19 @@ def run_pursuit_probe(
             writer.writeheader()
             writer.writerows(rows)
 
+
+    # Asociar cada decisión neuronal con un agente estable.
+    for record in neural_records:
+        model_id = record["model"]
+        object_id = record["agent_object_id"]
+        agent_id = agent_id_maps[model_id].get(object_id)
+        if agent_id is None:
+            raise RuntimeError(
+                "No se encontró el agente correspondiente "
+                f"al modelo {model_id}, objeto {object_id}."
+            )
+        record["agent_id"] = agent_id
+    # Exportar decisiones neuronales.
     neural_output_path = output_dir / "neural_decisions.csv"
 
     if neural_records:
@@ -319,7 +338,7 @@ def run_pursuit_probe(
         ) as file:
             writer = csv.DictWriter(
                 file,
-                fieldnames=list(neural_records[0]),
+                fieldnames=list(neural_records[0].keys()),
             )
             writer.writeheader()
             writer.writerows(neural_records)
