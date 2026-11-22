@@ -141,6 +141,73 @@ def test_episode_is_reproducible():
     )
 
 
+def test_food_progress_fitness_mode_adds_only_its_weighted_term(
+    monkeypatch,
+):
+    def set_progress(environment, movement_cost=0.1):
+        for prey in environment.prey:
+            prey.food_progress_score = 0.4
+            prey.steps_survived = 1
+
+    monkeypatch.setattr(Environment, "update_agents", set_progress)
+    monkeypatch.setattr(
+        Environment,
+        "resolve_interactions",
+        lambda environment, capture_reward=30.0: None,
+    )
+    monkeypatch.setattr(Environment, "update_food", lambda environment: None)
+    genomes = create_genomes(2)
+    baseline = EpisodeEvaluator(
+        SIMULATION_CONFIG,
+        NEURAL_CONFIG,
+        seed=17,
+    )
+    experimental = EpisodeEvaluator(
+        SIMULATION_CONFIG,
+        NEURAL_CONFIG,
+        seed=17,
+        fitness_mode="food_progress",
+        food_progress_weight=0.2,
+    )
+
+    baseline_fitness = baseline.evaluate(genomes)
+    experimental_fitness, diagnostics = experimental.evaluate(
+        genomes,
+        include_diagnostics=True,
+    )
+
+    np.testing.assert_allclose(
+        experimental_fitness - baseline_fitness,
+        0.08,
+    )
+    assert all(row["food_progress_score"] == 0.4 for row in diagnostics)
+    assert all(
+        row["food_progress"] == pytest.approx(0.08)
+        for row in diagnostics
+    )
+
+
+def test_food_progress_mode_does_not_change_predator_fitness():
+    genomes = create_genomes(3)
+    baseline = EpisodeEvaluator(
+        SIMULATION_CONFIG,
+        NEURAL_CONFIG,
+        seed=27,
+    )
+    experimental = EpisodeEvaluator(
+        SIMULATION_CONFIG,
+        NEURAL_CONFIG,
+        seed=27,
+        fitness_mode="food_progress",
+        food_progress_weight=0.5,
+    )
+
+    np.testing.assert_array_equal(
+        baseline.evaluate(genomes, species="predator"),
+        experimental.evaluate(genomes, species="predator"),
+    )
+
+
 @pytest.mark.parametrize("evaluate_both", [False, True])
 def test_diagnostics_are_reproducible(evaluate_both):
     genomes = create_genomes(3)
@@ -205,6 +272,8 @@ def test_diagnostics_include_all_fields_and_match_fitness(
         "steps_survived",
         "visited_regions",
         "stagnation_steps",
+        "food_progress_score",
+        "food_progress",
     }
 
     assert len(diagnostics) == len(genomes)
@@ -213,6 +282,7 @@ def test_diagnostics_include_all_fields_and_match_fitness(
         assert set(diagnostic) == expected_fields
         assert diagnostic["genome_index"] == genome_index
         assert diagnostic["fitness"] == prey_fitness[genome_index]
+        assert diagnostic["food_progress"] == 0.0
 
 
 @pytest.mark.parametrize("evaluate_both", [False, True])

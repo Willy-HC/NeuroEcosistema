@@ -70,8 +70,28 @@ def main():
         action="store_true",
         help="Exportar diagnósticos de fitness de presas en coevolución.",
     )
+    parser.add_argument(
+        "--fitness-mode",
+        choices=["baseline", "food_progress"],
+        default="baseline",
+        help="Señal de fitness para las presas.",
+    )
+    parser.add_argument(
+        "--food-progress-weight",
+        type=float,
+        default=0.05,
+        help="Peso de progreso alimentario en modo food_progress.",
+    )
 
     args = parser.parse_args()
+
+    if (
+        args.fitness_mode == "food_progress"
+        and args.species == "predator"
+    ):
+        parser.error(
+            "--fitness-mode food_progress solo se admite para presas."
+        )
 
     if args.record_diagnostics and args.species != "both":
         parser.error(
@@ -95,6 +115,8 @@ def main():
             simulation_config=simulation,
             neural_config=neural,
             evolution_config=evolution,
+            fitness_mode=args.fitness_mode,
+            food_progress_weight=args.food_progress_weight,
         )
 
         if args.record_diagnostics:
@@ -138,6 +160,8 @@ def main():
             neural_config=neural,
             evolution_config=evolution,
             species=args.species,
+            fitness_mode=args.fitness_mode,
+            food_progress_weight=args.food_progress_weight,
         )
 
         trainer.train()

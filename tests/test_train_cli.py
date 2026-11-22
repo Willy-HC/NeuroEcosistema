@@ -131,6 +131,8 @@ def test_cli_passes_diagnostics_option_to_coevolution_trainer(
             simulation_config,
             neural_config,
             evolution_config,
+            fitness_mode="baseline",
+            food_progress_weight=0.05,
         ):
             self.prey_trainer = SimpleNamespace(
                 best_fitness=0.5,
@@ -181,3 +183,81 @@ def test_cli_passes_diagnostics_option_to_coevolution_trainer(
         ("validate", str(tmp_path)),
         ("train", True),
     ]
+
+
+def test_cli_passes_food_progress_options_to_prey_trainer(
+    monkeypatch,
+    tmp_path,
+):
+    calls = []
+
+    class FakeEvolutionTrainer:
+        def __init__(
+            self,
+            simulation_config,
+            neural_config,
+            evolution_config,
+            species="prey",
+            fitness_mode="baseline",
+            food_progress_weight=0.05,
+        ):
+            calls.append(
+                ("configure", species, fitness_mode, food_progress_weight)
+            )
+            self.best_fitness = 0.5
+            self.best_generation = 1
+
+        def train(self):
+            calls.append(("train",))
+
+        @staticmethod
+        def save_results(output_dir):
+            return {}
+
+    monkeypatch.setattr(
+        train_module,
+        "EvolutionTrainer",
+        FakeEvolutionTrainer,
+    )
+    monkeypatch.setattr(train_module, "load_configs", create_configs)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "train",
+            "--species",
+            "prey",
+            "--fitness-mode",
+            "food_progress",
+            "--food-progress-weight",
+            "0.2",
+            "--output",
+            str(tmp_path),
+        ],
+    )
+
+    train_module.main()
+
+    assert calls == [
+        ("configure", "prey", "food_progress", 0.2),
+        ("train",),
+    ]
+
+
+def test_cli_rejects_food_progress_for_predator_training(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "train",
+            "--species",
+            "predator",
+            "--fitness-mode",
+            "food_progress",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as error:
+        train_module.main()
+
+    assert error.value.code == 2

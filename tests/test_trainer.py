@@ -47,13 +47,19 @@ EVOLUTION_CONFIG = {
 }
 
 
-def create_trainer(species="prey"):
+def create_trainer(
+    species="prey",
+    fitness_mode="baseline",
+    food_progress_weight=0.05,
+):
     return EvolutionTrainer(
         SIMULATION_CONFIG,
         NEURAL_CONFIG,
         EVOLUTION_CONFIG,
         species=species,
         evaluation_seeds=(42, 123),
+        fitness_mode=fitness_mode,
+        food_progress_weight=food_progress_weight,
     )
 
 
@@ -73,6 +79,8 @@ def make_diagnostics(fitness_values, offset):
                 "steps_survived": 20 * offset + genome_index,
                 "visited_regions": 30 * offset + genome_index,
                 "stagnation_steps": 40 * offset + genome_index,
+                "food_progress_score": 0.1 * offset,
+                "food_progress": 0.005 * offset,
             }
         )
 
@@ -171,6 +179,8 @@ def test_population_diagnostics_average_per_genome_and_seed(monkeypatch):
         "steps_survived": 42.0,
         "visited_regions": 62.0,
         "stagnation_steps": 82.0,
+        "food_progress_score": 0.2,
+        "food_progress": 0.01,
     }
     assert all(
         row["fitness"] == mean_fitness[row["genome_index"]]
@@ -283,6 +293,8 @@ def test_save_results(tmp_path, monkeypatch):
     assert metadata["species"] == "prey"
     assert metadata["best_fitness"] == 5.0
     assert metadata["evaluation_seeds"] == [42, 123]
+    assert metadata["fitness_mode"] == "baseline"
+    assert metadata["food_progress_weight"] == 0.0
 
 
 def test_save_before_training_fails(tmp_path):
@@ -292,6 +304,36 @@ def test_save_before_training_fails(tmp_path):
         trainer.save_results(tmp_path)
 
 
+def test_experimental_fitness_settings_are_saved(
+    tmp_path,
+    monkeypatch,
+):
+    trainer = create_trainer(
+        fitness_mode="food_progress",
+        food_progress_weight=0.2,
+    )
+    monkeypatch.setattr(
+        trainer,
+        "evaluate_population",
+        lambda genomes: np.zeros(len(genomes)),
+    )
+
+    trainer.train()
+    metadata_path = trainer.save_results(tmp_path)["metadata"]
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+
+    assert metadata["fitness_mode"] == "food_progress"
+    assert metadata["food_progress_weight"] == 0.2
+
+
 def test_invalid_species():
     with pytest.raises(ValueError):
         create_trainer(species="unknown")
+
+
+def test_food_progress_mode_is_rejected_for_predators():
+    with pytest.raises(ValueError):
+        create_trainer(
+            species="predator",
+            fitness_mode="food_progress",
+        )

@@ -24,6 +24,8 @@ FITNESS_DIAGNOSTICS_COLUMNS = (
     "steps_survived",
     "visited_regions",
     "stagnation_steps",
+    "food_progress_score",
+    "food_progress",
 )
 
 COEVOLUTION_OUTPUT_FILENAMES = (
@@ -46,11 +48,15 @@ class CoevolutionTrainer:
         neural_config,
         evolution_config,
         evaluation_seeds=(42, 123, 456),
+        fitness_mode="baseline",
+        food_progress_weight=0.05,
     ):
         self.simulation_config = simulation_config
         self.neural_config = neural_config
         self.config = evolution_config
         self.evaluation_seeds = tuple(evaluation_seeds)
+        self.fitness_mode = fitness_mode
+        self.food_progress_weight = food_progress_weight
 
         self.prey_trainer = EvolutionTrainer(
             simulation_config=simulation_config,
@@ -58,6 +64,8 @@ class CoevolutionTrainer:
             evolution_config=evolution_config,
             species="prey",
             evaluation_seeds=evaluation_seeds,
+            fitness_mode=fitness_mode,
+            food_progress_weight=food_progress_weight,
         )
 
         # Utilizar otra semilla genética para evitar
@@ -73,6 +81,8 @@ class CoevolutionTrainer:
             evolution_config=predator_config,
             species="predator",
             evaluation_seeds=evaluation_seeds,
+            fitness_mode="baseline",
+            food_progress_weight=food_progress_weight,
         )
 
         self.generations = self.prey_trainer.generations
@@ -123,6 +133,8 @@ class CoevolutionTrainer:
                 simulation_config=self.simulation_config,
                 neural_config=self.neural_config,
                 seed=seed,
+                fitness_mode=self.fitness_mode,
+                food_progress_weight=self.food_progress_weight,
             )
 
             rotation = generation + index

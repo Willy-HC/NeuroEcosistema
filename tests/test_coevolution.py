@@ -1,5 +1,6 @@
 
 import csv
+import json
 
 import numpy as np
 import pytest
@@ -84,6 +85,8 @@ def make_diagnostics(fitness_values, rotation):
                 "steps_survived": 200 * rotation + genome_index,
                 "visited_regions": 300 * rotation + genome_index,
                 "stagnation_steps": 400 * rotation + genome_index,
+                "food_progress_score": 0.1 * rotation,
+                "food_progress": 0.005 * rotation,
             }
         )
 
@@ -206,6 +209,8 @@ def test_joint_diagnostics_average_per_genome_and_rotation(
         "steps_survived": 1102.0,
         "visited_regions": 1652.0,
         "stagnation_steps": 2202.0,
+        "food_progress_score": 0.55,
+        "food_progress": 0.0275,
     }
     assert all(
         row["fitness"] == prey_fitness[row["genome_index"]]
@@ -320,6 +325,45 @@ def test_coevolution_saves_both_models(configs, tmp_path):
             assert data["genome"].ndim == 1
 
     assert not (tmp_path / "fitness_diagnostics_prey.csv").exists()
+
+
+def test_coevolution_metadata_records_food_progress_for_prey_only(
+    configs,
+    tmp_path,
+):
+    simulation, neural, evolution = configs
+    trainer = CoevolutionTrainer(
+        simulation_config=simulation,
+        neural_config=neural,
+        evolution_config=evolution,
+        evaluation_seeds=(42,),
+        fitness_mode="food_progress",
+        food_progress_weight=0.2,
+    )
+
+    for species_trainer in (
+        trainer.prey_trainer,
+        trainer.predator_trainer,
+    ):
+        species_trainer.best_genome = np.zeros(3)
+        species_trainer.best_fitness = 0.5
+        species_trainer.best_generation = 1
+        species_trainer.history = [
+            {"generation": 1, "best_fitness": 0.5}
+        ]
+
+    paths = trainer.save_results(tmp_path)
+    prey_metadata = json.loads(
+        paths["prey"]["metadata"].read_text(encoding="utf-8")
+    )
+    predator_metadata = json.loads(
+        paths["predator"]["metadata"].read_text(encoding="utf-8")
+    )
+
+    assert prey_metadata["fitness_mode"] == "food_progress"
+    assert prey_metadata["food_progress_weight"] == 0.2
+    assert predator_metadata["fitness_mode"] == "baseline"
+    assert predator_metadata["food_progress_weight"] == 0.0
 
 
 def test_coevolution_exports_evaluated_prey_diagnostics(
@@ -518,6 +562,8 @@ def test_coevolution_exports_evaluated_prey_diagnostics(
         "steps_survived",
         "visited_regions",
         "stagnation_steps",
+        "food_progress_score",
+        "food_progress",
     ]
 
     with diagnostics_path.open(

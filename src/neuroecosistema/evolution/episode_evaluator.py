@@ -5,6 +5,7 @@ from neuroecosistema.evolution.fitness import (
     calculate_predator_fitness,
     calculate_prey_fitness,
     calculate_prey_fitness_components,
+    validate_fitness_options,
 )
 from neuroecosistema.neural_network.network import NeuralNetwork
 from neuroecosistema.simulation.environment import Environment
@@ -18,10 +19,19 @@ class EpisodeEvaluator:
         simulation_config,
         neural_config,
         seed=42,
+        fitness_mode="baseline",
+        food_progress_weight=0.05,
     ):
         self.simulation_config = simulation_config
         self.neural_config = neural_config
         self.seed = seed
+        (
+            self.fitness_mode,
+            self.food_progress_weight,
+        ) = validate_fitness_options(
+            fitness_mode,
+            food_progress_weight,
+        )
 
     def create_network(self, genome):
         """Reconstruye una red neuronal desde su genoma."""
@@ -40,12 +50,20 @@ class EpisodeEvaluator:
         return network
 
     @staticmethod
-    def _create_prey_diagnostic(prey, genome_index, max_steps):
+    def _create_prey_diagnostic(
+        prey,
+        genome_index,
+        max_steps,
+        fitness_mode="baseline",
+        food_progress_weight=0.05,
+    ):
         """Resume el fitness y las métricas de una presa evaluada."""
 
         components = calculate_prey_fitness_components(
             prey,
             max_steps,
+            fitness_mode=fitness_mode,
+            food_progress_weight=food_progress_weight,
         )
 
         return {
@@ -55,6 +73,8 @@ class EpisodeEvaluator:
             "steps_survived": prey.steps_survived,
             "visited_regions": len(prey.visited_regions),
             "stagnation_steps": prey.stagnation_steps,
+            "food_progress_score": prey.food_progress_score,
+            "food_progress": components.get("food_progress", 0.0),
         }
 
     def evaluate(
@@ -129,8 +149,12 @@ class EpisodeEvaluator:
             environment.resolve_interactions(
                 capture_reward=energy["capture_reward"]
             )
+            if species == "prey":
+                environment.synchronize_food_progress(evaluated_agents)
 
             environment.update_food()
+            if species == "prey":
+                environment.synchronize_food_progress(evaluated_agents)
 
         # evaluated_agents conserva referencias a todos los
         # individuos originales, incluso si fueron eliminados
@@ -143,6 +167,8 @@ class EpisodeEvaluator:
                         agent,
                         genome_index,
                         max_steps,
+                        self.fitness_mode,
+                        self.food_progress_weight,
                     )
                     for genome_index, agent in enumerate(
                         evaluated_agents
@@ -154,7 +180,12 @@ class EpisodeEvaluator:
                 ]
             else:
                 fitness_values = [
-                    calculate_prey_fitness(agent, max_steps)
+                    calculate_prey_fitness(
+                        agent,
+                        max_steps,
+                        fitness_mode=self.fitness_mode,
+                        food_progress_weight=self.food_progress_weight,
+                    )
                     for agent in evaluated_agents
                 ]
         else:
@@ -247,8 +278,10 @@ class EpisodeEvaluator:
             environment.resolve_interactions(
                 capture_reward=energy["capture_reward"]
             )
+            environment.synchronize_food_progress(evaluated_prey)
 
             environment.update_food()
+            environment.synchronize_food_progress(evaluated_prey)
 
         diagnostics = []
         if include_diagnostics:
@@ -257,6 +290,8 @@ class EpisodeEvaluator:
                     agent,
                     genome_index,
                     max_steps,
+                    self.fitness_mode,
+                    self.food_progress_weight,
                 )
                 for genome_index, agent in enumerate(evaluated_prey)
             ]
@@ -266,7 +301,12 @@ class EpisodeEvaluator:
             ]
         else:
             prey_fitness_values = [
-                calculate_prey_fitness(agent, max_steps)
+                calculate_prey_fitness(
+                    agent,
+                    max_steps,
+                    fitness_mode=self.fitness_mode,
+                    food_progress_weight=self.food_progress_weight,
+                )
                 for agent in evaluated_prey
             ]
 

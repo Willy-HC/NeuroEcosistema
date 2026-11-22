@@ -4,6 +4,17 @@ from dataclasses import dataclass, field
 
 
 @dataclass
+class FoodProgressReference:
+    plant_id: int
+    plant: object = field(compare=False, repr=False)
+    initial_distance: float
+    current_distance: float
+    net_progress: float = 0.0
+    status: str = "active"
+    credit: float = 0.0
+
+
+@dataclass
 class BaseAgent:
     """Clase base para los organismos del ecosistema."""
 
@@ -30,6 +41,12 @@ class BaseAgent:
     # Seguimiento del progreso hacia una planta.
     food_net_progress: float = 0.0
     food_target_switches: int = 0
+    food_progress_score: float = field(default=0.0, compare=False)
+    food_progress_references: dict[int, FoodProgressReference] = field(
+        default_factory=dict,
+        compare=False,
+        repr=False,
+    )
 
     # Estado temporal del objetivo alimentario.
     food_target_id: int | None = field(
@@ -49,6 +66,110 @@ class BaseAgent:
     )
 
     alive: bool = True
+
+    def synchronize_food_progress_references(self, plants):
+        """Track active plant identities without rewarding their appearance."""
+
+        plants = tuple(plants)
+        active_ids = {id(plant) for plant in plants}
+
+        for reference in self.food_progress_references.values():
+            if (
+                reference.status == "active"
+                and reference.plant_id not in active_ids
+            ):
+                reference.status = "discarded"
+
+        for plant in plants:
+            plant_id = id(plant)
+            if plant_id in self.food_progress_references:
+                continue
+
+            distance = math.dist(
+                (self.x, self.y),
+                (plant.x, plant.y),
+            )
+            self.food_progress_references[plant_id] = (
+                FoodProgressReference(
+                    plant_id=plant_id,
+                    plant=plant,
+                    initial_distance=distance,
+                    current_distance=distance,
+                )
+            )
+
+    def record_food_progress_movement(
+        self,
+        plant_snapshots,
+        distances_before,
+        map_diagonal,
+    ):
+        """Accumulate signed progress for each plant during real movement."""
+
+        if map_diagonal <= 0:
+            raise ValueError("La diagonal del mapa debe ser positiva.")
+
+        for plant, plant_x, plant_y in plant_snapshots:
+            reference = self.food_progress_references[id(plant)]
+            if reference.status != "active":
+                continue
+
+            distance_after = math.dist(
+                (self.x, self.y),
+                (plant_x, plant_y),
+            )
+            distance_before = distances_before[id(plant)]
+            reference.net_progress += (
+                distance_before - distance_after
+            ) / map_diagonal
+            reference.current_distance = distance_after
+
+    def record_food_plant_consumed(
+        self,
+        plant,
+        consumption_distance,
+        map_diagonal,
+    ):
+        """Finalize one progress credit for this prey's own consumption."""
+
+        if map_diagonal <= 0:
+            raise ValueError("La diagonal del mapa debe ser positiva.")
+
+        plant_id = id(plant)
+        reference = self.food_progress_references.get(plant_id)
+        if reference is None:
+            reference = FoodProgressReference(
+                plant_id=plant_id,
+                plant=plant,
+                initial_distance=consumption_distance,
+                current_distance=consumption_distance,
+            )
+            self.food_progress_references[plant_id] = reference
+
+        if reference.status != "active":
+            return
+
+        reference.current_distance = consumption_distance
+        reference.status = "consumed"
+        reference.credit = max(
+            0.0,
+            min(
+                1.0,
+                (
+                    reference.initial_distance
+                    - consumption_distance
+                ) / map_diagonal,
+            ),
+        )
+
+        consumed_credits = [
+            item.credit
+            for item in self.food_progress_references.values()
+            if item.status == "consumed"
+        ]
+        self.food_progress_score = (
+            sum(consumed_credits) / len(consumed_credits)
+        )
 
     def register_food_target_progress(
         self,

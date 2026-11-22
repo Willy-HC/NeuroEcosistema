@@ -191,6 +191,31 @@ class Environment:
         if predator_strategy not in valid_strategies:
             raise ValueError("Estrategia de depredadores no válida.")
 
+        plants_snapshot = tuple(self.plants)
+        plant_snapshots = tuple(
+            (plant, plant.x, plant.y)
+            for plant in plants_snapshot
+        )
+        map_diagonal = math.hypot(self.width, self.height)
+        if plants_snapshot and map_diagonal <= 0:
+            raise ValueError(
+                "La diagonal del mapa debe ser positiva."
+            )
+        food_progress_before = {}
+
+        for prey in self.prey:
+            prey.synchronize_food_progress_references(
+                plants_snapshot
+            )
+            if plants_snapshot:
+                food_progress_before[id(prey)] = {
+                    id(plant): math.dist(
+                        (prey.x, prey.y),
+                        (plant_x, plant_y),
+                    )
+                    for plant, plant_x, plant_y in plant_snapshots
+                }
+
         decisions = []
 
         for prey in self.prey:
@@ -298,6 +323,14 @@ class Environment:
 
             prey.food_approach_progress += progress
 
+        if plants_snapshot:
+            for prey in self.prey:
+                prey.record_food_progress_movement(
+                    plant_snapshots,
+                    food_progress_before[id(prey)],
+                    map_diagonal,
+                )
+
         self.prey = [
             agent for agent in self.prey
             if agent.alive
@@ -342,8 +375,17 @@ class Environment:
 
         self.spawn_plant()
 
+    def synchronize_food_progress(self, prey_agents) -> None:
+        """Synchronize per-prey plant references with the active plants."""
+
+        for prey in prey_agents:
+            prey.synchronize_food_progress_references(self.plants)
+
     def resolve_interactions(self, capture_reward: float = 30.0) -> None:
         """Resuelve la alimentación y las capturas del ciclo."""
+
+        tracked_prey = self.prey[:]
+        map_diagonal = math.hypot(self.width, self.height)
 
         # Alimentación de las presas.
         for prey in self.prey:
@@ -357,6 +399,11 @@ class Environment:
 
                 if distance <= collision_distance:
                     prey.energy = min(100.0, prey.energy + plant.energy)
+                    prey.record_food_plant_consumed(
+                        plant,
+                        distance,
+                        map_diagonal,
+                    )
                     self.plants.remove(plant)
                     self.total_food_consumed += 1
                     prey.food_eaten += 1
@@ -395,6 +442,8 @@ class Environment:
             for agent_id, network in self.prey_networks.items()
             if agent_id in active_prey_ids
         }
+
+        self.synchronize_food_progress(tracked_prey)
 
     def initialize_neural_networks(self, network_config):
         """Asigna una red neuronal independiente a cada agente."""

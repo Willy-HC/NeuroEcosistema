@@ -49,3 +49,25 @@ La herramienta escribe `agent_diagnostics.csv`, `episode_summary.csv` y
 hashes de los modelos, la configuración efectiva, las posiciones iniciales y
 las limitaciones de comparabilidad. Se pueden incluir semillas adicionales,
 por ejemplo `--seeds 42 123 456 789`.
+
+## Fitness experimental de progreso alimentario
+
+El entrenamiento mantiene `baseline` como modo predeterminado. Para una
+ejecución futura experimental de presas, se puede seleccionar
+`--fitness-mode food_progress` y configurar `--food-progress-weight` (por
+defecto `0.05`). La fórmula añade `peso * food_progress_score` al fitness
+original; la alimentación, supervivencia y exploración conservan sus términos.
+El modo experimental no se admite para entrenamiento solo de depredadores.
+
+Cada presa mantiene referencias separadas para las identidades de plantas
+activas. En cada movimiento se acumula el cambio firmado de distancia a cada
+planta, normalizado por la diagonal del mapa. Una referencia solo produce
+crédito si esa misma presa consume la planta; el crédito es el progreso neto
+desde que se registró la planta hasta la colisión, limitado a `[0, 1]`. Las
+plantas desaparecidas por consumo ajeno descartan solo su propia referencia,
+y las reposiciones comienzan con progreso cero. El score es la media de los
+créditos realizados; sin consumos es cero. El fitness experimental se limita
+a `[0, 1]`. Esto evita acumular progreso de oscilaciones sin consumo, aunque
+el progreso pendiente de una planta que consume otra presa no se acredita.
+Depredadores y fitness `baseline` no reciben esta señal. Los metadatos de cada
+modelo guardan el modo y el peso efectivo.

@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from neuroecosistema.evolution.episode_evaluator import EpisodeEvaluator
+from neuroecosistema.evolution.fitness import validate_fitness_options
 from neuroecosistema.evolution.genetic_algorithm import GeneticAlgorithm
 from neuroecosistema.neural_network.network import NeuralNetwork
 
@@ -22,6 +23,8 @@ def _average_prey_diagnostics(diagnostics_by_evaluation, fitness_values):
         "steps_survived",
         "visited_regions",
         "stagnation_steps",
+        "food_progress_score",
+        "food_progress",
     )
 
     indexed_diagnostics = [
@@ -62,6 +65,8 @@ class EvolutionTrainer:
         evolution_config,
         species="prey",
         evaluation_seeds=(42, 123, 456),
+        fitness_mode="baseline",
+        food_progress_weight=0.05,
     ):
         if species not in ("prey", "predator"):
             raise ValueError("Especie no válida.")
@@ -69,6 +74,19 @@ class EvolutionTrainer:
         if not evaluation_seeds:
             raise ValueError(
                 "Se necesita al menos una semilla de evaluación."
+            )
+
+        (
+            self.fitness_mode,
+            self.food_progress_weight,
+        ) = validate_fitness_options(
+            fitness_mode,
+            food_progress_weight,
+        )
+        if species == "predator" and self.fitness_mode != "baseline":
+            raise ValueError(
+                "El progreso alimentario solo puede aplicarse "
+                "al fitness de presas."
             )
 
         if len(set(evaluation_seeds)) != len(evaluation_seeds):
@@ -145,6 +163,8 @@ class EvolutionTrainer:
                 simulation_config=self.simulation_config,
                 neural_config=self.neural_config,
                 seed=seed,
+                fitness_mode=self.fitness_mode,
+                food_progress_weight=self.food_progress_weight,
             )
 
             if include_diagnostics:
@@ -266,6 +286,8 @@ class EvolutionTrainer:
             "best_generation": self.best_generation,
             "generations": self.generations,
             "evaluation_seeds": list(self.evaluation_seeds),
+            "fitness_mode": self.fitness_mode,
+            "food_progress_weight": self.food_progress_weight,
             "neural_config": self.neural_config,
             "evolution_config": self.config,
             "simulation_config": self.simulation_config,
