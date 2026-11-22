@@ -5,16 +5,20 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from neuroecosistema.agents.heuristic_controller import (
+    calculate_heuristic_direction,
+)
 from neuroecosistema.agents.perception import perceive_prey
-from neuroecosistema.agents.prey import Prey
 from neuroecosistema.analysis.food_orientation_probe import (
+    FOOD_DISTANCES,
     INITIAL_ENERGY,
     MODEL_IDS,
-    NULL_VECTOR_EPSILON,
-    PLANT_DISTANCE,
-    PREY_POSITION,
+    PREY_POSITIONS,
+    SCENARIO_DIRECTIONS,
+    TANH_SATURATION_LOGIT_THRESHOLD,
     WORLD_HEIGHT,
     WORLD_WIDTH,
+    _create_environment,
     _measure_scenario,
     angular_error_degrees,
     build_scenarios,
@@ -28,76 +32,101 @@ from neuroecosistema.neural_network.model_loader import (
     load_trained_network,
 )
 from neuroecosistema.neural_network.network import NeuralNetwork
-from neuroecosistema.simulation.environment import Plant
 from neuroecosistema.train import load_configs
 
 
-def test_scenarios_cover_eight_directions_at_equal_distance():
+def food_scenario(start_position_id, distance, direction_id):
+    return next(
+        scenario
+        for scenario in build_scenarios()
+        if scenario.start_position_id == start_position_id
+        and scenario.food_distance == distance
+        and scenario.food_direction == direction_id
+    )
+
+
+def test_scenarios_cover_distances_directions_and_safe_positions():
     scenarios = build_scenarios()
-    direction_scenarios = scenarios[:8]
 
-    assert [scenario.scenario_id for scenario in direction_scenarios] == [
-        "north",
-        "northeast",
-        "east",
-        "southeast",
-        "south",
-        "southwest",
-        "west",
-        "northwest",
-    ]
-    assert scenarios[-1].scenario_id == "no_plant"
-    assert scenarios[-1].plant_position is None
+    assert len(scenarios) == 3 * (3 * 8 + 1)
+    for start_position_id, prey_position in PREY_POSITIONS:
+        for distance in FOOD_DISTANCES:
+            group = [
+                scenario
+                for scenario in scenarios
+                if scenario.start_position_id == start_position_id
+                and scenario.food_distance == distance
+            ]
+            assert [scenario.food_direction for scenario in group] == [
+                direction for direction, _ in SCENARIO_DIRECTIONS
+            ]
+            assert [
+                math.dist(scenario.prey_position, scenario.plant_position)
+                for scenario in group
+            ] == pytest.approx([distance] * 8, abs=1e-10)
 
-    distances = [
-        math.dist(scenario.prey_position, scenario.plant_position)
-        for scenario in direction_scenarios
-    ]
-    assert distances == pytest.approx(
-        [PLANT_DISTANCE] * 8,
-        abs=1e-10,
-    )
+            for scenario in group:
+                plant_x, plant_y = scenario.plant_position
+                assert 0.0 < plant_x < WORLD_WIDTH
+                assert 0.0 < plant_y < WORLD_HEIGHT
+                assert scenario.prey_position == prey_position
 
-    for scenario in direction_scenarios:
-        assert scenario.prey_position == PREY_POSITION
-        plant_x, plant_y = scenario.plant_position
-        assert 40 < plant_x < WORLD_WIDTH - 40
-        assert 40 < plant_y < WORLD_HEIGHT - 40
+        no_food = [
+            scenario
+            for scenario in scenarios
+            if scenario.start_position_id == start_position_id
+            and scenario.food_distance is None
+        ]
+        assert len(no_food) == 1
+        assert no_food[0].plant_position is None
 
 
-def test_scenario_perception_is_normalized_and_uses_controlled_energy():
-    scenario = build_scenarios()[1]
-    prey = Prey(
-        x=scenario.prey_position[0],
-        y=scenario.prey_position[1],
-        energy=INITIAL_ENERGY,
-    )
-    plant = Plant(
-        x=scenario.plant_position[0],
-        y=scenario.plant_position[1],
-    )
+def test_all_start_positions_have_same_wall_perception():
+    wall_inputs = []
+    for (
+        start_position_id,
+        _,
+    ) in PREY_POSITIONS:
+        scenario = food_scenario(start_position_id, 100.0, "east")
+        environment, prey = _create_environment(scenario)
+        inputs = perceive_prey(
+            prey,
+            environment.plants,
+            environment.predators,
+            WORLD_WIDTH,
+            WORLD_HEIGHT,
+        )
+        wall_inputs.append(float(inputs[7]))
 
+    assert wall_inputs == pytest.approx([300.0 / 350.0] * 3)
+
+
+def test_perception_normalization_and_energy_are_controlled():
+    scenario = food_scenario("center", 100.0, "northeast")
+    environment, prey = _create_environment(scenario)
     inputs = perceive_prey(
         prey,
-        [plant],
-        [],
+        environment.plants,
+        environment.predators,
         WORLD_WIDTH,
         WORLD_HEIGHT,
     )
+    plant = environment.plants[0]
     dx = plant.x - prey.x
     dy = plant.y - prey.y
 
+    assert prey.energy == INITIAL_ENERGY
     np.testing.assert_allclose(
         inputs,
         [
             dx / WORLD_WIDTH,
             dy / WORLD_HEIGHT,
-            PLANT_DISTANCE / math.hypot(WORLD_WIDTH, WORLD_HEIGHT),
+            100.0 / math.hypot(WORLD_WIDTH, WORLD_HEIGHT),
             0.0,
             0.0,
             1.0,
             1.0,
-            1.0,
+            300.0 / 350.0,
         ],
         rtol=0.0,
         atol=1e-7,
@@ -113,26 +142,36 @@ def test_scenario_perception_is_normalized_and_uses_controlled_energy():
     ],
 )
 def test_angular_error(direction, ideal, expected):
-    assert angular_error_degrees(direction, ideal) == pytest.approx(
-        expected
-    )
+    assert angular_error_degrees(direction, ideal) == pytest.approx(expected)
 
 
-def test_angular_error_is_not_applicable_for_null_vectors():
-    assert (
-        angular_error_degrees(
-            (NULL_VECTOR_EPSILON / 2, 0.0),
-            (1.0, 0.0),
-        )
-        is None
+def test_null_vectors_and_missing_food_have_no_angular_error():
+    zero_network = create_constant_network()
+    scenario = food_scenario("center", 50.0, "north")
+    row = _measure_scenario(
+        model_id="test",
+        model_path=Path("test-model.npz"),
+        model_hash="test-hash",
+        network=zero_network,
+        scenario=scenario,
     )
+    assert row["vector_is_practically_null"]
+    assert row["angular_error_degrees"] is None
     assert angular_error_degrees((1.0, 0.0), None) is None
 
-
-def test_circular_heading_span_handles_wraparound():
-    assert circular_angle_span_degrees([350.0, 10.0]) == pytest.approx(
-        20.0
+    no_food = next(
+        scenario
+        for scenario in build_scenarios()
+        if scenario.start_position_id == "center" and scenario.food_distance is None
     )
+    no_food_row = _measure_scenario(
+        model_id="test",
+        model_path=Path("test-model.npz"),
+        model_hash="test-hash",
+        network=zero_network,
+        scenario=no_food,
+    )
+    assert no_food_row["angular_error_degrees"] is None
 
 
 def create_constant_network(output_biases=(0.0, 0.0)):
@@ -150,30 +189,13 @@ def create_constant_network(output_biases=(0.0, 0.0)):
     return network
 
 
-def test_practically_null_network_vector_is_recorded_without_angle():
-    scenario = build_scenarios()[0]
-
+def test_tanh_saturation_uses_documented_logit_threshold():
+    scenario = food_scenario("center", 50.0, "north")
     row = _measure_scenario(
         model_id="test",
         model_path=Path("test-model.npz"),
         model_hash="test-hash",
-        network=create_constant_network(),
-        scenario=scenario,
-    )
-
-    assert row["vector_is_practically_null"]
-    assert row["output_magnitude"] == 0.0
-    assert row["angular_error_degrees"] is None
-
-
-def test_tanh_saturation_is_counted_at_documented_logit_threshold():
-    scenario = build_scenarios()[0]
-
-    row = _measure_scenario(
-        model_id="test",
-        model_path=Path("test-model.npz"),
-        model_hash="test-hash",
-        network=create_constant_network((3.0, -3.0)),
+        network=create_constant_network((TANH_SATURATION_LOGIT_THRESHOLD, -3.1)),
         scenario=scenario,
     )
 
@@ -181,21 +203,23 @@ def test_tanh_saturation_is_counted_at_documented_logit_threshold():
     assert row["tanh_saturated_components"] == 2
 
 
+def test_circular_heading_span_handles_wraparound():
+    assert circular_angle_span_degrees([350.0, 10.0]) == pytest.approx(20.0)
+
+
 def test_observer_outputs_match_network_forward_for_both_models():
     _, neural_config, _ = load_configs()
+    inputs = np.asarray(
+        [0.1, -0.07, 0.08, 0.0, 0.0, 1.0, 1.0, 300 / 350],
+        dtype=np.float32,
+    )
 
     for model_path in default_model_paths().values():
         network = load_trained_network(model_path, neural_config)
-        inputs = np.asarray(
-            [0.1, -0.07, 0.08, 0.0, 0.0, 1.0, 1.0, 1.0],
-            dtype=np.float32,
-        )
-
         logits, observed_outputs = observe_network_outputs(
             network,
             inputs,
         )
-
         assert logits.shape == (2,)
         np.testing.assert_allclose(
             observed_outputs,
@@ -216,38 +240,95 @@ def test_observer_rejects_wrong_input_shape():
         observe_network_outputs(network, np.zeros(7))
 
 
-def test_probe_writes_nine_rows_per_model_and_preserves_models(
-    tmp_path,
-):
+def test_heuristic_is_a_positive_control_across_all_food_scenarios():
+    for scenario in build_scenarios():
+        if scenario.plant_position is None:
+            continue
+
+        environment, prey = _create_environment(scenario)
+        direction = calculate_heuristic_direction(prey, environment)
+        ideal = (
+            scenario.plant_position[0] - prey.x,
+            scenario.plant_position[1] - prey.y,
+        )
+
+        assert direction is not None
+        assert angular_error_degrees(direction, ideal) == pytest.approx(
+            0.0,
+            abs=1e-6,
+        )
+
+
+def test_probe_outputs_all_policies_and_preserves_models(tmp_path):
     model_paths = default_model_paths()
     hashes_before = {
-        model_id: sha256_file(path)
-        for model_id, path in model_paths.items()
+        model_id: sha256_file(path) for model_id, path in model_paths.items()
     }
 
-    result = run_probe(
-        model_paths=model_paths,
-        output_dir=tmp_path / "probe",
-    )
+    result = run_probe(model_paths, tmp_path / "probe")
+    rows_by_policy = {
+        policy_id: [row for row in result["rows"] if row["model_id"] == policy_id]
+        for policy_id in (*MODEL_IDS, "heuristic")
+    }
 
-    assert len(result["rows"]) == 18
-    assert [row["model_id"] for row in result["rows"][:9]] == [
-        "5G"
-    ] * 9
-    assert [row["model_id"] for row in result["rows"][9:]] == [
-        "30G"
-    ] * 9
+    assert len(result["rows"]) == 225
+    assert all(len(rows) == 75 for rows in rows_by_policy.values())
     assert all(
         row["model_sha256"] == hashes_before[row["model_id"]]
-        for row in result["rows"]
+        for model_id in MODEL_IDS
+        for row in rows_by_policy[model_id]
     )
-    assert not any(
-        row["wall_avoidance_active"] for row in result["rows"]
-    )
+    assert all(not row["wall_avoidance_active"] for row in result["rows"])
     assert {
-        model_id: sha256_file(path)
-        for model_id, path in model_paths.items()
+        model_id: sha256_file(path) for model_id, path in model_paths.items()
     } == hashes_before
+
+    heuristic_rows = [
+        row for row in rows_by_policy["heuristic"] if row["food_distance"] is not None
+    ]
+    assert len(heuristic_rows) == 72
+    assert all(
+        row["angular_error_degrees"] == pytest.approx(0.0, abs=1e-6)
+        for row in heuristic_rows
+    )
+
+    for model_id in MODEL_IDS:
+        for distance in FOOD_DISTANCES:
+            for direction, _ in SCENARIO_DIRECTIONS:
+                translated_rows = [
+                    row
+                    for row in rows_by_policy[model_id]
+                    if row["food_distance"] == distance
+                    and row["food_direction"] == direction
+                ]
+                assert len(translated_rows) == 3
+                np.testing.assert_allclose(
+                    [
+                        [
+                            row["input_plant_dx"],
+                            row["input_plant_dy"],
+                            row["input_plant_distance"],
+                            row["input_wall_distance"],
+                            row["effective_direction_x"],
+                            row["effective_direction_y"],
+                        ]
+                        for row in translated_rows
+                    ],
+                    [
+                        [
+                            translated_rows[0]["input_plant_dx"],
+                            translated_rows[0]["input_plant_dy"],
+                            translated_rows[0]["input_plant_distance"],
+                            translated_rows[0]["input_wall_distance"],
+                            translated_rows[0]["effective_direction_x"],
+                            translated_rows[0]["effective_direction_y"],
+                        ]
+                    ]
+                    * 3,
+                    rtol=0.0,
+                    atol=1e-7,
+                )
+
     assert result["diagnostics"].is_file()
     assert result["summary"].is_file()
     assert result["diagnostics"].parent == tmp_path / "probe"
@@ -257,29 +338,48 @@ def test_probe_writes_nine_rows_per_model_and_preserves_models(
         newline="",
         encoding="utf-8",
     ) as file:
-        rows = list(csv.DictReader(file))
-    assert len(rows) == 18
-
-    no_plant_rows = [
-        row for row in rows if row["scenario_id"] == "no_plant"
-    ]
-    assert len(no_plant_rows) == 2
-    assert all(
-        row["angular_error_degrees"] == "N/A"
-        for row in no_plant_rows
-    )
+        csv_rows = list(csv.DictReader(file))
+    no_food_rows = [row for row in csv_rows if row["food_distance"] == ""]
+    assert len(no_food_rows) == 9
+    assert all(row["angular_error_degrees"] == "N/A" for row in no_food_rows)
 
     with result["summary"].open(
         newline="",
         encoding="utf-8",
     ) as file:
         summaries = list(csv.DictReader(file))
-    assert len(summaries) == 2
+    assert len(summaries) == 30
     assert all(
-        int(row["food_scenarios"]) == 8
-        and int(row["angular_error_scenarios"]) == 8
-        for row in summaries
+        len(
+            [
+                row
+                for row in summaries
+                if row["model_id"] == model_id
+                and row["group_type"] == "distance"
+                and row["scenario_count"] == "24"
+            ]
+        )
+        == 3
+        for model_id in (*MODEL_IDS, "heuristic")
     )
+    for model_id in MODEL_IDS:
+        overall = next(
+            row
+            for row in summaries
+            if row["model_id"] == model_id and row["group_type"] == "overall"
+        )
+        assert float(overall["food_output_heading_span_degrees"]) > 0.0
+    for axis in ("horizontal", "vertical"):
+        assert all(
+            any(
+                row["model_id"] == model_id
+                and row["group_type"] == "axis"
+                and row["group_value"] == axis
+                and row["scenario_count"] == "18"
+                for row in summaries
+            )
+            for model_id in (*MODEL_IDS, "heuristic")
+        )
 
 
 def test_probe_is_reproducible(tmp_path):
@@ -287,9 +387,7 @@ def test_probe_is_reproducible(tmp_path):
     first = run_probe(model_paths, tmp_path / "first")
     second = run_probe(model_paths, tmp_path / "second")
 
-    assert first["diagnostics"].read_bytes() == (
-        second["diagnostics"].read_bytes()
-    )
+    assert first["diagnostics"].read_bytes() == (second["diagnostics"].read_bytes())
     assert first["summary"].read_bytes() == second["summary"].read_bytes()
 
 
@@ -333,5 +431,3 @@ def test_both_repository_models_load_with_expected_architecture():
             np.all(np.isfinite(values))
             for values in [*network.weights, *network.biases]
         )
-
-

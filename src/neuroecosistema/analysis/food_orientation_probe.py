@@ -9,6 +9,9 @@ from pathlib import Path
 
 import numpy as np
 
+from neuroecosistema.agents.heuristic_controller import (
+    calculate_heuristic_direction,
+)
 from neuroecosistema.agents.neural_controller import (
     calculate_neural_direction,
     normalize_direction,
@@ -25,8 +28,12 @@ from neuroecosistema.train import load_configs
 
 WORLD_WIDTH = 1000
 WORLD_HEIGHT = 700
-PREY_POSITION = (500.0, 350.0)
-PLANT_DISTANCE = 100.0
+PREY_POSITIONS = (
+    ("left", (300.0, 300.0)),
+    ("center", (500.0, 300.0)),
+    ("right", (700.0, 300.0)),
+)
+FOOD_DISTANCES = (50.0, 100.0, 200.0)
 INITIAL_ENERGY = 100.0
 NULL_VECTOR_EPSILON = 1e-8
 # |logit| >= 3 means |tanh(logit)| >= 0.995, treated as saturated.
@@ -50,8 +57,11 @@ SCENARIO_DIRECTIONS = (
 @dataclass(frozen=True)
 class ProbeScenario:
     scenario_id: str
+    start_position_id: str
     prey_position: tuple[float, float]
     plant_position: tuple[float, float] | None
+    food_distance: float | None
+    food_direction: str | None
 
 
 def project_root():
@@ -65,42 +75,50 @@ def default_model_paths():
 
     results_dir = project_root() / "results"
     return {
-        "5G": results_dir
-        / "coevolution_diagnostics_5gen"
-        / "best_prey.npz",
-        "30G": results_dir
-        / "coevolution_diagnostics_30gen"
-        / "best_prey.npz",
+        "5G": results_dir / "coevolution_diagnostics_5gen" / "best_prey.npz",
+        "30G": results_dir / "coevolution_diagnostics_30gen" / "best_prey.npz",
     }
 
 
 def build_scenarios():
-    """Build eight equidistant food directions and one no-food case."""
+    """Build food-direction, distance, and prey-position combinations."""
 
-    center_x, center_y = PREY_POSITION
     scenarios = []
 
-    for scenario_id, degrees in SCENARIO_DIRECTIONS:
-        radians = math.radians(degrees)
-        plant_position = (
-            center_x + PLANT_DISTANCE * math.cos(radians),
-            center_y + PLANT_DISTANCE * math.sin(radians),
-        )
+    for start_position_id, prey_position in PREY_POSITIONS:
+        prey_x, prey_y = prey_position
+
+        for distance in FOOD_DISTANCES:
+            for direction_id, degrees in SCENARIO_DIRECTIONS:
+                radians = math.radians(degrees)
+                plant_position = (
+                    prey_x + distance * math.cos(radians),
+                    prey_y + distance * math.sin(radians),
+                )
+                scenarios.append(
+                    ProbeScenario(
+                        scenario_id=(
+                            f"{start_position_id}_{int(distance)}_{direction_id}"
+                        ),
+                        start_position_id=start_position_id,
+                        prey_position=prey_position,
+                        plant_position=plant_position,
+                        food_distance=distance,
+                        food_direction=direction_id,
+                    )
+                )
+
         scenarios.append(
             ProbeScenario(
-                scenario_id=scenario_id,
-                prey_position=PREY_POSITION,
-                plant_position=plant_position,
+                scenario_id=f"{start_position_id}_no_plant",
+                start_position_id=start_position_id,
+                prey_position=prey_position,
+                plant_position=None,
+                food_distance=None,
+                food_direction=None,
             )
         )
 
-    scenarios.append(
-        ProbeScenario(
-            scenario_id="no_plant",
-            prey_position=PREY_POSITION,
-            plant_position=None,
-        )
-    )
     return tuple(scenarios)
 
 
@@ -116,9 +134,7 @@ def observe_network_outputs(network, inputs):
 
     final_logits = None
 
-    for index, (weights, biases) in enumerate(
-        zip(network.weights, network.biases)
-    ):
+    for index, (weights, biases) in enumerate(zip(network.weights, network.biases)):
         values = np.dot(values, weights.T) + biases
 
         if index == len(network.weights) - 1:
@@ -137,9 +153,7 @@ def observe_network_outputs(network, inputs):
         rtol=FORWARD_OUTPUT_RTOL,
         atol=FORWARD_OUTPUT_ATOL,
     ):
-        raise RuntimeError(
-            "El observador no coincide con NeuralNetwork.forward()."
-        )
+        raise RuntimeError("El observador no coincide con NeuralNetwork.forward().")
 
     return final_logits, values.copy()
 
@@ -156,9 +170,7 @@ def angular_error_degrees(direction, ideal_direction):
     if observed.shape != (2,) or ideal.shape != (2,):
         raise ValueError("Las direcciones deben tener dos componentes.")
 
-    if not np.all(np.isfinite(observed)) or not np.all(
-        np.isfinite(ideal)
-    ):
+    if not np.all(np.isfinite(observed)) or not np.all(np.isfinite(ideal)):
         raise ValueError("Las direcciones deben ser finitas.")
 
     observed_magnitude = float(np.linalg.norm(observed))
@@ -170,10 +182,7 @@ def angular_error_degrees(direction, ideal_direction):
     ):
         return None
 
-    cosine = float(
-        np.dot(observed, ideal)
-        / (observed_magnitude * ideal_magnitude)
-    )
+    cosine = float(np.dot(observed, ideal) / (observed_magnitude * ideal_magnitude))
     cosine = max(-1.0, min(1.0, cosine))
     return math.degrees(math.acos(cosine))
 
@@ -251,33 +260,46 @@ def _measure_scenario(
         environment.width,
         environment.height,
     )
-    logits, outputs = observe_network_outputs(network, inputs)
-
-    output_magnitude = float(np.linalg.norm(outputs))
-    vector_is_null = output_magnitude <= NULL_VECTOR_EPSILON
-    normalized_output = normalize_direction(
-        float(outputs[0]),
-        float(outputs[1]),
-    )
-
-    effective_direction = calculate_neural_direction(
-        prey,
-        network,
-        environment,
-    )
-    wall_avoidance_active = prey.wall_escape_active
+    if network is None:
+        heuristic_direction = calculate_heuristic_direction(
+            prey,
+            environment,
+        )
+        effective_direction = (
+            heuristic_direction if heuristic_direction is not None else (0.0, 0.0)
+        )
+        normalized_output = effective_direction
+        output_magnitude = None
+        vector_is_null = math.hypot(*effective_direction) <= NULL_VECTOR_EPSILON
+        logits = None
+        outputs = None
+        saturated_components = None
+        wall_avoidance_active = False
+    else:
+        logits, outputs = observe_network_outputs(network, inputs)
+        output_magnitude = float(np.linalg.norm(outputs))
+        vector_is_null = output_magnitude <= NULL_VECTOR_EPSILON
+        normalized_output = normalize_direction(
+            float(outputs[0]),
+            float(outputs[1]),
+        )
+        effective_direction = calculate_neural_direction(
+            prey,
+            network,
+            environment,
+        )
+        saturated_components = int(
+            np.count_nonzero(np.abs(logits) >= TANH_SATURATION_LOGIT_THRESHOLD)
+        )
+        wall_avoidance_active = prey.wall_escape_active
 
     if scenario.plant_position is None:
         ideal_direction = None
         ideal_dx = None
         ideal_dy = None
     else:
-        ideal_dx = (
-            scenario.plant_position[0] - scenario.prey_position[0]
-        )
-        ideal_dy = (
-            scenario.plant_position[1] - scenario.prey_position[1]
-        )
+        ideal_dx = scenario.plant_position[0] - scenario.prey_position[0]
+        ideal_dy = scenario.plant_position[1] - scenario.prey_position[1]
         ideal_direction = (ideal_dx, ideal_dy)
 
     angular_error = (
@@ -291,35 +313,40 @@ def _measure_scenario(
     output_heading = (
         None
         if vector_is_null
-        else math.degrees(
-            math.atan2(normalized_output[1], normalized_output[0])
-        )
+        else math.degrees(math.atan2(normalized_output[1], normalized_output[0]))
     )
 
-    saturated_components = int(
-        np.count_nonzero(
-            np.abs(logits) >= TANH_SATURATION_LOGIT_THRESHOLD
-        )
-    )
     plant_dx, plant_dy, plant_distance = inputs[:3]
     predator_dx, predator_dy, predator_distance = inputs[3:6]
+    effective_magnitude = math.hypot(*effective_direction)
+    effective_heading = (
+        None
+        if effective_magnitude <= NULL_VECTOR_EPSILON
+        else math.degrees(
+            math.atan2(
+                effective_direction[1],
+                effective_direction[0],
+            )
+        )
+    )
 
     return {
         "model_id": model_id,
-        "model_path": str(Path(model_path).resolve()),
-        "model_sha256": model_hash,
+        "model_path": (
+            str(Path(model_path).resolve()) if model_path is not None else None
+        ),
+        "model_sha256": model_hash if model_hash is not None else "N/A",
         "scenario_id": scenario.scenario_id,
+        "start_position_id": scenario.start_position_id,
+        "food_direction": scenario.food_direction,
+        "food_distance": scenario.food_distance,
         "prey_x": scenario.prey_position[0],
         "prey_y": scenario.prey_position[1],
         "plant_x": (
-            scenario.plant_position[0]
-            if scenario.plant_position is not None
-            else None
+            scenario.plant_position[0] if scenario.plant_position is not None else None
         ),
         "plant_y": (
-            scenario.plant_position[1]
-            if scenario.plant_position is not None
-            else None
+            scenario.plant_position[1] if scenario.plant_position is not None else None
         ),
         "ideal_food_dx": ideal_dx,
         "ideal_food_dy": ideal_dy,
@@ -331,96 +358,127 @@ def _measure_scenario(
         "input_predator_distance": float(predator_distance),
         "input_energy": float(inputs[6]),
         "input_wall_distance": float(inputs[7]),
-        "linear_output_x": float(logits[0]),
-        "linear_output_y": float(logits[1]),
-        "tanh_output_x": float(outputs[0]),
-        "tanh_output_y": float(outputs[1]),
+        "linear_output_x": (float(logits[0]) if logits is not None else None),
+        "linear_output_y": (float(logits[1]) if logits is not None else None),
+        "tanh_output_x": (float(outputs[0]) if outputs is not None else None),
+        "tanh_output_y": (float(outputs[1]) if outputs is not None else None),
         "normalized_output_x": normalized_output[0],
         "normalized_output_y": normalized_output[1],
-        "normalized_output_heading_degrees": output_heading,
+        "normalized_output_heading_degrees": (
+            output_heading if network is not None else effective_heading
+        ),
+        "effective_heading_degrees": effective_heading,
         "effective_direction_x": effective_direction[0],
         "effective_direction_y": effective_direction[1],
         "angular_error_degrees": angular_error,
         "wall_avoidance_active": wall_avoidance_active,
         "output_magnitude": output_magnitude,
         "vector_is_practically_null": vector_is_null,
-        "tanh_saturated": saturated_components > 0,
+        "tanh_saturated": (
+            saturated_components > 0 if saturated_components is not None else None
+        ),
         "tanh_saturated_components": saturated_components,
     }
 
 
-def _summarize_model(model_id, rows):
-    """Summarize food errors and counts across all nine probe cases."""
+def _summary_groups(rows):
+    """Yield overall and useful food-position subsets for one policy."""
 
-    food_rows = [
-        row
-        for row in rows
-        if row["model_id"] == model_id
-        and row["scenario_id"] != "no_plant"
-    ]
+    yield "overall", "all", rows
+    for distance in FOOD_DISTANCES:
+        yield (
+            "distance",
+            str(int(distance)),
+            [row for row in rows if row["food_distance"] == distance],
+        )
+    for start_position_id, _ in PREY_POSITIONS:
+        yield (
+            "start_position",
+            start_position_id,
+            [
+                row
+                for row in rows
+                if row["start_position_id"] == start_position_id
+                and row["food_distance"] is not None
+            ],
+        )
+    for axis, directions in (
+        ("horizontal", {"east", "west"}),
+        ("vertical", {"north", "south"}),
+    ):
+        yield (
+            "axis",
+            axis,
+            [row for row in rows if row["food_direction"] in directions],
+        )
+    yield (
+        "food_presence",
+        "no_plant",
+        [row for row in rows if row["food_distance"] is None],
+    )
+
+
+def _summarize_group(model_id, group_type, group_value, rows):
+    food_rows = [row for row in rows if row["food_distance"] is not None]
     errors = [
         row["angular_error_degrees"]
         for row in food_rows
         if row["angular_error_degrees"] is not None
     ]
-    model_rows = [
-        row for row in rows if row["model_id"] == model_id
-    ]
     food_headings = [
-        row["normalized_output_heading_degrees"]
+        row["effective_heading_degrees"]
         for row in food_rows
-        if row["normalized_output_heading_degrees"] is not None
+        if row["effective_heading_degrees"] is not None
+    ]
+    saturation_values = [
+        row["tanh_saturated_components"]
+        for row in rows
+        if row["tanh_saturated_components"] is not None
     ]
 
     return {
         "model_id": model_id,
+        "group_type": group_type,
+        "group_value": group_value,
+        "scenario_count": len(rows),
         "food_scenarios": len(food_rows),
         "angular_error_scenarios": len(errors),
-        "mean_angular_error_degrees": (
-            float(np.mean(errors)) if errors else None
-        ),
-        "median_angular_error_degrees": (
-            float(np.median(errors)) if errors else None
-        ),
-        "max_angular_error_degrees": (
-            float(np.max(errors)) if errors else None
-        ),
-        "errors_at_most_30_degrees": sum(
-            error <= 30.0 for error in errors
-        ),
-        "errors_at_least_90_degrees": sum(
-            error >= 90.0 for error in errors
-        ),
+        "mean_angular_error_degrees": (float(np.mean(errors)) if errors else None),
+        "median_angular_error_degrees": (float(np.median(errors)) if errors else None),
+        "max_angular_error_degrees": (float(np.max(errors)) if errors else None),
+        "errors_at_most_30_degrees": sum(error <= 30.0 for error in errors),
+        "errors_at_least_90_degrees": sum(error >= 90.0 for error in errors),
         "food_output_heading_span_degrees": (
             circular_angle_span_degrees(food_headings)
         ),
-        "saturated_output_components": sum(
-            row["tanh_saturated_components"]
-            for row in model_rows
-        ),
+        "saturated_output_components": sum(saturation_values)
+        if saturation_values
+        else None,
         "practically_null_vectors": sum(
-            row["vector_is_practically_null"]
-            for row in model_rows
+            row["vector_is_practically_null"] for row in rows
         ),
         "wall_avoidance_interventions": sum(
-            row["wall_avoidance_active"]
-            for row in model_rows
+            row["wall_avoidance_active"] for row in rows
         ),
     }
 
 
+def _summarize_policy(model_id, rows):
+    return [
+        _summarize_group(model_id, group_type, group_value, group_rows)
+        for group_type, group_value, group_rows in _summary_groups(rows)
+    ]
+
+
 def run_probe(model_paths, output_dir):
-    """Load both models, run nine deterministic probes, and write two CSVs."""
+    """Probe both neural models and the heuristic on the same scenarios."""
 
     if set(model_paths) != set(MODEL_IDS):
-        raise ValueError(
-            "model_paths debe contener exactamente las claves 5G y 30G."
-        )
+        raise ValueError("model_paths debe contener exactamente las claves 5G y 30G.")
 
     output_dir = Path(output_dir).resolve()
     model_paths = {
-        model_id: Path(model_paths[model_id]).resolve()
-        for model_id in MODEL_IDS
+        model_id: Path(model_paths[model_id]).resolve() for model_id in MODEL_IDS
     }
 
     _, neural_config, _ = load_configs()
@@ -440,15 +498,14 @@ def run_probe(model_paths, output_dir):
         )
         if architecture != expected_architecture:
             raise ValueError(
-                f"Arquitectura inesperada para {model_id}: "
-                f"{architecture}."
+                f"Arquitectura inesperada para {model_id}: {architecture}."
             )
         models[model_id] = network
 
-    rows = []
+    rows_by_policy = {model_id: [] for model_id in MODEL_IDS}
     for model_id in MODEL_IDS:
         for scenario in build_scenarios():
-            rows.append(
+            rows_by_policy[model_id].append(
                 _measure_scenario(
                     model_id=model_id,
                     model_path=model_paths[model_id],
@@ -458,9 +515,28 @@ def run_probe(model_paths, output_dir):
                 )
             )
 
+    rows_by_policy["heuristic"] = [
+        _measure_scenario(
+            model_id="heuristic",
+            model_path=None,
+            model_hash=None,
+            network=None,
+            scenario=scenario,
+        )
+        for scenario in build_scenarios()
+    ]
+    rows = [
+        row
+        for policy_id in (*MODEL_IDS, "heuristic")
+        for row in rows_by_policy[policy_id]
+    ]
     summaries = [
-        _summarize_model(model_id, rows)
-        for model_id in MODEL_IDS
+        summary
+        for policy_id in (*MODEL_IDS, "heuristic")
+        for summary in _summarize_policy(
+            policy_id,
+            rows_by_policy[policy_id],
+        )
     ]
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -474,9 +550,7 @@ def run_probe(model_paths, output_dir):
                 f"El archivo de salida apunta fuera del directorio: {path}"
             )
 
-    with diagnostics_path.open(
-        "w", newline="", encoding="utf-8"
-    ) as file:
+    with diagnostics_path.open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(
             file,
             fieldnames=list(rows[0]),
@@ -485,19 +559,14 @@ def run_probe(model_paths, output_dir):
         writer.writerows(
             {
                 key: (
-                    "N/A"
-                    if key == "angular_error_degrees"
-                    and value is None
-                    else value
+                    "N/A" if key == "angular_error_degrees" and value is None else value
                 )
                 for key, value in row.items()
             }
             for row in rows
         )
 
-    with summary_path.open(
-        "w", newline="", encoding="utf-8"
-    ) as file:
+    with summary_path.open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(
             file,
             fieldnames=list(summaries[0]),
@@ -507,9 +576,7 @@ def run_probe(model_paths, output_dir):
 
     for model_id in MODEL_IDS:
         if sha256_file(model_paths[model_id]) != hashes_before[model_id]:
-            raise RuntimeError(
-                f"El modelo {model_id} cambió durante el diagnóstico."
-            )
+            raise RuntimeError(f"El modelo {model_id} cambió durante el diagnóstico.")
 
     return {
         "diagnostics": diagnostics_path,
@@ -522,8 +589,7 @@ def run_probe(model_paths, output_dir):
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description=(
-            "Sonda determinista de orientación de redes de presa "
-            "hacia plantas."
+            "Sonda determinista de orientación de redes de presa hacia plantas."
         )
     )
     defaults = default_model_paths()
@@ -555,15 +621,16 @@ def main(argv=None):
     print(f"Diagnóstico: {result['diagnostics']}")
     print(f"Resumen: {result['summary']}")
     for summary in result["summaries"]:
-        print(
-            f"{summary['model_id']}: "
-            f"error medio="
-            f"{summary['mean_angular_error_degrees']:.2f}°, "
-            f"mediano="
-            f"{summary['median_angular_error_degrees']:.2f}°, "
-            f"máximo="
-            f"{summary['max_angular_error_degrees']:.2f}°"
-        )
+        if summary["group_type"] == "overall":
+            print(
+                f"{summary['model_id']}: "
+                f"error medio="
+                f"{summary['mean_angular_error_degrees']:.2f}°, "
+                f"mediano="
+                f"{summary['median_angular_error_degrees']:.2f}°, "
+                f"máximo="
+                f"{summary['max_angular_error_degrees']:.2f}°"
+            )
 
 
 if __name__ == "__main__":
